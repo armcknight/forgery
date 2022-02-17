@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+
+from github import Github
+import argh
+import os
+import subprocess
+
+def clone(access_token, base_path, no_public_repos=False, no_private_repos=False, no_starred_repos=False, no_forked_repos=False):
+    'Clone the public, private, starred and forked repos from the specified account managed by the provided access token.'
+    g = Github(access_token)
+    u = g.get_user()
+    path = f'{base_path}/{u.login}'
+    fork_path = f'{path}/forks'
+    star_path = f'{path}/stars'
+    public_path = f'{path}/public'
+    private_path = f'{path}/private'
+    subprocess.check_call(['mkdir', '-p', fork_path, star_path, public_path, private_path])
+    for repo in u.get_repos():
+        if repo.fork and not no_forked_repos:
+            r = g.get_repo(repo.full_name)
+            print(f'forked: {repo.full_name}')
+            clone_path = f'{fork_path}/{r.parent.owner.login}/{repo.name}'
+            if not os.path.exists(clone_path):
+                subprocess.check_call(['git', 'clone', repo.ssh_url, clone_path])
+                subprocess.check_call(['git', 'remote', 'rename', 'origin', 'fork'], cwd=clone_path)
+                subprocess.check_call(['git', 'remote', 'add', 'upstream', r.parent.ssh_url], cwd=clone_path)
+            else:
+                print('already cloned')
+        elif repo.private and not no_private_repos:
+            print(f'private: {repo.full_name}')
+            clone_path = f'{private_path}/{repo.name}'
+            if not os.path.exists(clone_path):
+                subprocess.check_call(['git', 'clone', repo.ssh_url, clone_path])
+            else:
+                print('already cloned')
+        elif not no_public_repos:
+            print(f'public: {repo.full_name}')
+            clone_path = f'{public_path}/{repo.name}'
+            if not os.path.exists(clone_path):
+                subprocess.check_call(['git', 'clone', repo.ssh_url, clone_path])
+            else:
+                print('already cloned')
+
+    if not no_starred_repos:
+        for repo in u.get_starred():
+            print(f'starred: {repo.full_name}')
+            clone_path = f'{star_path}/{repo.owner.login}/{repo.name}'
+            if not os.path.exists(clone_path):
+                subprocess.check_call(['git', 'clone', repo.ssh_url, clone_path])
+            else:
+                print('already cloned')
+
+    # TODO: sync public/private/starred/forked gists
+
+argh.dispatch_command(clone)
