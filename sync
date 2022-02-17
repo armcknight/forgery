@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+
+from github import Github
+import argh
+import subprocess
+
+def sync(access_token, base_path):
+    'Sync the owned, starred and forked repos from the specified account managed by the provided access token.'
+    g = Github(access_token)
+    u = g.get_user()
+    path = f'{base_path}/{u.login}'
+    fork_path = f'{path}/forks'
+    star_path = f'{path}/stars'
+    public_path = f'{path}/public'
+    private_path = f'{path}/private'
+    subprocess.check_call(['mkdir', '-p', fork_path, star_path, public_path, private_path])
+    for repo in u.get_repos():
+        if repo.fork:
+            r = g.get_repo(repo.full_name)
+            print(f'forked: {repo.full_name}')
+            subprocess.check_call(['git', 'clone', repo.ssh_url, f'{fork_path}/{r.parent.owner.login}/{repo.name}'])
+
+            # TODO: go in and set up remotes to point to both fork and upstream
+        elif repo.private:
+            print(f'private: {repo.full_name}')
+            subprocess.check_call(['git', 'clone', repo.ssh_url, f'{private_path}/{repo.name}'])
+        else:
+            print(f'public: {repo.full_name}')
+            subprocess.check_call(['git', 'clone', repo.ssh_url, f'{public_path}/{repo.name}'])
+
+    for repo in u.get_starred():
+        print(f'starred: {repo.full_name}')
+        subprocess.check_call(['git', 'clone', repo.ssh_url, f'{star_path}/{repo.owner.login}/{repo.name}'])
+
+    # TODO: sync public/private/starred/forked gists
+
+argh.dispatch_command(sync)
