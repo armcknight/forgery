@@ -29,7 +29,7 @@ def _clone_wiki(repo, clone_path):
 def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     'Clone a normal repo and any associated wiki.'
     print(f'cloning {repo.full_name}')
-    clone_path = f'{repo_type_path}/{repo.owner.login}/{repo.name}'
+    clone_path = f'{repo_type_path}/{repo.name}'
     _clone_repo(repo.ssh_url, clone_path)
 
     if not no_wikis:
