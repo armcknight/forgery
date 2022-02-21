@@ -2,6 +2,7 @@
 
 from github import Github
 import argh
+from argh import arg
 import os
 import requests
 import subprocess
@@ -42,6 +43,16 @@ def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     if not no_wikis:
         _clone_wiki(repo, clone_path)
 
+@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
+@arg('base_path', help='Location of the repos to sync')
+@arg('--no_public_repos', help='Do not clone the authenticated user\'s public repos', default=False)
+@arg('--no_private_repos', help='Do not clone the authenticated user\'s private repos', default=False)
+@arg('--no_starred_repos', help='Do not clone the authenticated user\'s starred repos', default=False)
+@arg('--no_forked_repos', help='Do not clone the authenticated user\'s forked repos', default=False)
+@arg('--no_public_gists', help='Do not clone the authenticated user\'s public gists', default=False)
+@arg('--no_private_gists', help='Do not clone the authenticated user\'s private gists', default=False)
+@arg('--no_starred_gists', help='Do not clone the authenticated user\'s starred gists', default=False)
+@arg('--no_wikis', help='Don not clone wikis associated with any repos that are cloned', default=False)
 def clone(access_token, base_path, no_public_repos=False, no_private_repos=False, no_starred_repos=False, no_forked_repos=False, no_public_gists=False, no_private_gists=False, no_starred_gists=False, no_wikis=False):
     'Clone the public, private, starred and forked repos and gists, as well as any associated wikis, unless disabled with options, from the specified account managed by the provided access token.'
     g = Github(access_token)
