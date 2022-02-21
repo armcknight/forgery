@@ -55,25 +55,32 @@ def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
 
 @arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
 @arg('base_path', help='Location of the repos to sync')
-@arg('--prune', help='Remove local repositories that no longer exist remotely', default=False)
 def sync(access_token, base_path, prune=False):
-    'Sync repos that have been previously cloned, by fetching and fast-forwarding to pick up any new commits. Optionally, remove repos locally that no longer appear in the API response from GitHub, like if a repo the user owned was deleted, or the user unstarred a repo. Update the tags associated with cloned repos, as those may change over time.'
-    # get list of repos from GitHub
+    'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private repos should be synced, using their access tokens in turn.'
+    # iterate through local repos per account/organization
+    g = Github(access_token)
+    for account_types in os.scandir(base_path):
+        if account_type == _user:
+            for user in os.scandir(f'{base_path}/{_user}'):
+                account = g.get_user(user)
+
+        elif account_type == _organization:
+            for user in os.scandir(f'{base_path}/{_organization}'):
+                account = g.get_organization(organization)
+        else:
+            print(f'unexpected account type directory: {account_type}')
+
+        # build list of locally cloned repos
 
 
-    # get list(s) of locally cloned repos
+        # get list of repos from GitHub
 
 
-    # iterate through local repos and update information from the remote listing:
+        # update tags
 
 
-        # tags
+        # fetch/fast-forward
 
-
-        # fetch/pull
-
-
-        # if not in the remote listing any longer, delete local copy if --prune was set
 
 @arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
 @arg('base_path', help='Location of the repos to sync')
