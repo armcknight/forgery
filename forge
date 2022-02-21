@@ -7,11 +7,14 @@ import requests
 import subprocess
 
 def _clone_repo(ssh_url, clone_path):
-    'Clone a repo to a path, or skip if it already exists there.'
+    'Clone a repo to a path and return True, or skip and return False if it already exists there.'
     if not os.path.exists(clone_path):
+        print(f'cloning {repo.full_name}')
         subprocess.check_call(['git', 'clone', ssh_url, clone_path])
+        return True
     else:
         print('repo already cloned')
+        return False
 
 def _clone_wiki(repo, clone_path):
     'Clone the wiki associated with a repo, or skip if it already exists locally.'
@@ -26,11 +29,15 @@ def _clone_wiki(repo, clone_path):
             else:
                 print('wiki already cloned')
 
+def _tag_repo_topics(repo, clone_path):
+    taglist = repo.topics.joined(',')
+    subprocess.check_call(['tag', '-a', taglist, clone_path])
+
 def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     'Clone a normal repo and any associated wiki.'
-    print(f'cloning {repo.full_name}')
     clone_path = f'{repo_type_path}/{repo.name}'
-    _clone_repo(repo.ssh_url, clone_path)
+    if _clone_repo(repo.ssh_url, clone_path):
+        _tag_repo_topics(repo, clone_path)
 
     if not no_wikis:
         _clone_wiki(repo, clone_path)
@@ -50,17 +57,13 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             if no_forked_repos:
                 continue
             r = g.get_repo(repo.full_name)
-            print(f'forked: {repo.full_name}')
             clone_path = f'{fork_path}/{r.parent.owner.login}/{repo.name}'
-            if not os.path.exists(clone_path):
-                subprocess.check_call(['git', 'clone', repo.ssh_url, clone_path])
+            if _clone_repo(repo.ssh_url, clone_path):
                 subprocess.check_call(['git', 'remote', 'rename', 'origin', 'fork'], cwd=clone_path)
                 subprocess.check_call(['git', 'remote', 'add', 'upstream', r.parent.ssh_url], cwd=clone_path)
-            else:
-                print('already cloned')
-
-            if not no_wikis:
-                _clone_wiki(r.parent, clone_path)
+                _tag_repo_topics(r.parent, clone_path)
+                if not no_wikis:
+                    _clone_wiki(r.parent, clone_path)
         elif repo.private:
             if no_private_repos:
                 continue
