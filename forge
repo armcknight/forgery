@@ -45,6 +45,28 @@ def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
 
 @arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
 @arg('base_path', help='Location of the repos to sync')
+@arg('--prune', help='Remove local repositories that no longer exist remotely', default=False)
+def sync(access_token, base_path, prune=False):
+    'Sync repos that have been previously cloned, by fetching and fast-forwarding to pick up any new commits. Optionally, remove repos locally that no longer appear in the API response from GitHub, like if a repo the user owned was deleted, or the user unstarred a repo. Update the tags associated with cloned repos, as those may change over time.'
+    # get list of repos from GitHub
+
+
+    # get list(s) of locally cloned repos
+
+
+    # iterate through local repos and update information from the remote listing:
+
+
+        # tags
+
+
+        # fetch/pull
+
+
+        # if not in the remote listing any longer, delete local copy if --prune was set
+
+@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
+@arg('base_path', help='Location of the repos to sync')
 @arg('--no_public_repos', help='Do not clone the authenticated user\'s public repos', default=False)
 @arg('--no_private_repos', help='Do not clone the authenticated user\'s private repos', default=False)
 @arg('--no_starred_repos', help='Do not clone the authenticated user\'s starred repos', default=False)
@@ -108,7 +130,7 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             _clone_repo(gist_ssh_url, f'{starred_gists_path}/{gist.description}')
 
 parser = argh.ArghParser()
-parser.add_commands([clone])
+parser.add_commands([clone, sync])
 
 if __name__ == '__main__':
     parser.dispatch()
