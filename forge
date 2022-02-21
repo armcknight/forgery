@@ -7,6 +7,9 @@ import os
 import requests
 import subprocess
 
+_organization = 'organization'
+_user = 'user'
+
 def _clone_repo(ssh_url, clone_path):
     'Clone a repo to a path and return True, or skip and return False if it already exists there.'
     if not os.path.exists(clone_path):
@@ -47,7 +50,6 @@ def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     clone_path = f'{repo_type_path}/{repo.name}'
     if _clone_repo(repo.ssh_url, clone_path):
         _tag_repo(repo, clone_path)
-
     if not no_wikis:
         _clone_wiki(repo, clone_path)
 
@@ -82,18 +84,24 @@ def sync(access_token, base_path, prune=False):
 @arg('--no_public_gists', help='Do not clone the authenticated user\'s public gists', default=False)
 @arg('--no_private_gists', help='Do not clone the authenticated user\'s private gists', default=False)
 @arg('--no_starred_gists', help='Do not clone the authenticated user\'s starred gists', default=False)
-@arg('--no_wikis', help='Don not clone wikis associated with any repos that are cloned', default=False)
-def clone(access_token, base_path, no_public_repos=False, no_private_repos=False, no_starred_repos=False, no_forked_repos=False, no_public_gists=False, no_private_gists=False, no_starred_gists=False, no_wikis=False):
-    'Clone the public, private, starred and forked repos and gists, as well as any associated wikis, unless disabled with options, from the specified account managed by the provided access token.'
+@arg('--no_wikis', help='Do not clone wikis associated with any repos that are cloned', default=False)
+@arg('--organization', help='Instead of fetching the list of the authenticated user\'s repos, fetch the specified organzation\'s. This means there will be no starred repos/gists.', default=None, type=str)
+def clone(access_token, base_path, no_public_repos=False, no_private_repos=False, no_starred_repos=False, no_forked_repos=False, no_public_gists=False, no_private_gists=False, no_starred_gists=False, no_wikis=False, organization=None):
+    'Clone the public, private, starred and forked repos and gists, as well as any associated wikis, unless disabled with options, from the specified account managed by the provided access token, or optionally from a specified organization.'
     g = Github(access_token)
-    u = g.get_user()
-    repos_path = f'{base_path}/{u.login}/repos'
+    if organization is not None:
+        account = g.get_organization(organization)
+        account_type = _organization
+    else:
+        account = g.get_user()
+        account_type = _user
+    repos_path = f'{base_path}/{account_type}/{account.login}/repos'
     fork_path = f'{repos_path}/forked'
     star_path = f'{repos_path}/starred'
     public_path = f'{repos_path}/public'
     private_path = f'{repos_path}/private'
     subprocess.check_call(['mkdir', '-p', fork_path, star_path, public_path, private_path])
-    for repo in u.get_repos():
+    for repo in account.get_repos():
         if repo.fork:
             if no_forked_repos:
                 continue
@@ -113,29 +121,33 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             if no_public_repos:
                 continue
             _clone_nonforked_repo(repo, public_path, no_wikis)
-
-    if not no_starred_repos:
-        for repo in u.get_starred():
+    if organization is None and not no_starred_repos:
+        for repo in account.get_starred():
             _clone_nonforked_repo(repo, f'{star_path}/{repo.owner.login}', no_wikis)
-
-    gists_path = f'{base_path}/{u.login}/gists'
+    gists_path = f'{base_path}/{account.login}/gists'
     public_gists_path = f'{gists_path}/public'
     private_gists_path = f'{gists_path}/private'
     starred_gists_path = f'{gists_path}/starred'
+    forked_gists_path = f'{gists_path}/forked'
     subprocess.check_call(['mkdir', '-p', starred_gists_path, public_gists_path, private_gists_path])
-    for gist in u.get_gists():
-        gist_url = gist.git_pull_url.replace('https://gist.github.com/', '')
-        gist_ssh_url = f'git@gist.github.com:{gist_url}'
-        if gist.public:
-            _clone_repo(gist_ssh_url, f'{public_gists_path}/{gist.description}')
+    for gist in account.get_gists():
+        if gist.fork_of is not None:
+            upstream = g.get_gist(gist.fork_of.id)
+            gist_url = upstream.git_pull_url.replace('https://gist.github.com/', '')
+            gist_ssh_url = f'git@gist.github.com:{gist_url}'
+            _clone_repo(gist_ssh_url, f'{forked_gists_path}/{upstream.owner.login}/{gist.description}')
         else:
-            _clone_repo(gist_ssh_url, f'{private_gists_path}/{gist.description}')
-
-    if not no_starred_gists:
-        for gist in u.get_starred_gists():
             gist_url = gist.git_pull_url.replace('https://gist.github.com/', '')
             gist_ssh_url = f'git@gist.github.com:{gist_url}'
-            _clone_repo(gist_ssh_url, f'{starred_gists_path}/{gist.description}')
+            if gist.public:
+                _clone_repo(gist_ssh_url, f'{public_gists_path}/{gist.description}')
+            else:
+                _clone_repo(gist_ssh_url, f'{private_gists_path}/{gist.description}')
+    if organization is None and not no_starred_gists:
+        for gist in account.get_starred_gists():
+            gist_url = gist.git_pull_url.replace('https://gist.github.com/', '')
+            gist_ssh_url = f'git@gist.github.com:{gist_url}'
+            _clone_repo(gist_ssh_url, f'{starred_gists_path}/{gist.owner.login}/{gist.description}')
 
 parser = argh.ArghParser()
 parser.add_commands([clone, sync])
