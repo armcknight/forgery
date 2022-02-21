@@ -30,15 +30,23 @@ def _clone_wiki(repo, clone_path):
             else:
                 print('wiki already cloned')
 
-def _tag_repo_topics(repo, clone_path):
-    taglist = repo.topics.joined(',')
-    subprocess.check_call(['tag', '-a', taglist, clone_path])
+def _tag_repo(repo, clone_path):
+    if (repo.topics is None or count(repo.topics) == 0) and repo.language is None:
+        return
+    if repo.topics is not None and count(repo.topics) > 0:
+        taglist = [topic.lower() for topic in repo.topics]
+    if repo.language is not None:
+        if taglist is not None:
+            taglist.append(repo.language.lower())
+        else:
+            taglist = [repo.language]
+    subprocess.check_call(['tag', '-a', {tag for tag in taglist}.joined(','), clone_path])
 
 def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     'Clone a normal repo and any associated wiki.'
     clone_path = f'{repo_type_path}/{repo.name}'
     if _clone_repo(repo.ssh_url, clone_path):
-        _tag_repo_topics(repo, clone_path)
+        _tag_repo(repo, clone_path)
 
     if not no_wikis:
         _clone_wiki(repo, clone_path)
@@ -94,7 +102,7 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             if _clone_repo(repo.ssh_url, clone_path):
                 subprocess.check_call(['git', 'remote', 'rename', 'origin', 'fork'], cwd=clone_path)
                 subprocess.check_call(['git', 'remote', 'add', 'upstream', r.parent.ssh_url], cwd=clone_path)
-                _tag_repo_topics(r.parent, clone_path)
+                _tag_repo(r.parent, clone_path)
                 if not no_wikis:
                     _clone_wiki(r.parent, clone_path)
         elif repo.private:
