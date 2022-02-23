@@ -42,16 +42,16 @@ def _clone_wiki(repo, clone_path):
                 print('wiki already cloned')
 
 def _tag_repo(repo, clone_path):
-    if (repo.topics is None or count(repo.topics) == 0) and repo.language is None:
+    topics = repo.get_topics()
+    if (topics is None or len(topics) == 0) and repo.language is None:
         return
-    if repo.topics is not None and count(repo.topics) > 0:
-        taglist = [topic.lower() for topic in repo.topics]
+    if topics is not None and len(topics) > 0:
+        taglist = [topic.lower() for topic in topics]
+    else:
+        taglist = []
     if repo.language is not None:
-        if taglist is not None:
-            taglist.append(repo.language.lower())
-        else:
-            taglist = [repo.language]
-    subprocess.check_call(['tag', '-a', {tag for tag in taglist}.joined(','), clone_path])
+        taglist.append(repo.language.lower())
+    subprocess.check_call(['tag', '-a', ','.join({tag for tag in taglist}), clone_path])
 
 def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     'Clone a normal repo and any associated wiki.'
