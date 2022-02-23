@@ -182,7 +182,7 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     if organization is None and not no_starred_repos:
         for repo in account.get_starred():
             _clone_nonforked_repo(repo, f'{star_path}/{repo.owner.login}', no_wikis)
-    gists_path = f'{base_path}/{account.login}/{_gists_subpath}'
+    gists_path = f'{base_path}/{account_type}/{account.login}/{_gists_subpath}'
     public_gists_path = f'{gists_path}/{_public_subpath}'
     private_gists_path = f'{gists_path}/{_private_subpath}'
     starred_gists_path = f'{gists_path}/{_starred_subpath}'
