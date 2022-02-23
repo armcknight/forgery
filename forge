@@ -150,16 +150,18 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     if organization is not None:
         account = g.get_organization(organization)
         account_type = _organization
+        repos = account.get_repos()
     else:
         account = g.get_user()
         account_type = _user
+        repos = account.get_repos(affiliation='owner')
     repos_path = f'{base_path}/{account_type}/{account.login}/{_repos_subpath}'
     fork_path = f'{repos_path}/{_forked_subpath}'
     star_path = f'{repos_path}/{_starred_subpath}'
     public_path = f'{repos_path}/{_public_subpath}'
     private_path = f'{repos_path}/{_private_subpath}'
     subprocess.check_call(['mkdir', '-p', fork_path, star_path, public_path, private_path])
-    for repo in account.get_repos(affiliation='owner'):
+    for repo in repos:
         if repo.fork:
             if no_forked_repos:
                 continue
