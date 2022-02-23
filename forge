@@ -17,7 +17,7 @@ _forked_subpath = 'forked'
 _starred_subpath = 'starred'
 
 _repos_subpath = 'repos'
-_gists_subpath = 'gitst'
+_gists_subpath = 'gists'
 
 def _clone_repo(ssh_url, clone_path):
     'Clone a repo to a path and return True, or skip and return False if it already exists there.'
