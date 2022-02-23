@@ -10,6 +10,14 @@ import subprocess
 _organization = 'organization'
 _user = 'user'
 
+_public_subpath = 'public'
+_private_subpath = 'private'
+_forked_subpath = 'forked'
+_starred_subpath = 'starred'
+
+_repos_subpath = 'repos'
+_gists_subpath = 'gitst'
+
 def _clone_repo(ssh_url, clone_path):
     'Clone a repo to a path and return True, or skip and return False if it already exists there.'
     if not os.path.exists(clone_path):
@@ -105,11 +113,11 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     else:
         account = g.get_user()
         account_type = _user
-    repos_path = f'{base_path}/{account_type}/{account.login}/repos'
-    fork_path = f'{repos_path}/forked'
-    star_path = f'{repos_path}/starred'
-    public_path = f'{repos_path}/public'
-    private_path = f'{repos_path}/private'
+    repos_path = f'{base_path}/{account_type}/{account.login}/{_repos_subpath}'
+    fork_path = f'{repos_path}/{_forked_subpath}'
+    star_path = f'{repos_path}/{_starred_subpath}'
+    public_path = f'{repos_path}/{_public_subpath}'
+    private_path = f'{repos_path}/{_private_subpath}'
     subprocess.check_call(['mkdir', '-p', fork_path, star_path, public_path, private_path])
     for repo in account.get_repos():
         if repo.fork:
@@ -134,11 +142,11 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     if organization is None and not no_starred_repos:
         for repo in account.get_starred():
             _clone_nonforked_repo(repo, f'{star_path}/{repo.owner.login}', no_wikis)
-    gists_path = f'{base_path}/{account.login}/gists'
-    public_gists_path = f'{gists_path}/public'
-    private_gists_path = f'{gists_path}/private'
-    starred_gists_path = f'{gists_path}/starred'
-    forked_gists_path = f'{gists_path}/forked'
+    gists_path = f'{base_path}/{account.login}/{_gists_subpath}'
+    public_gists_path = f'{gists_path}/{_public_subpath}'
+    private_gists_path = f'{gists_path}/{_private_subpath}'
+    starred_gists_path = f'{gists_path}/{_starred_subpath}'
+    forked_gists_path = f'{gists_path}/{_forked_subpath}'
     subprocess.check_call(['mkdir', '-p', starred_gists_path, public_gists_path, private_gists_path])
     for gist in account.get_gists():
         if gist.fork_of is not None:
