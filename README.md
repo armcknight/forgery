@@ -25,30 +25,32 @@ It builds a directory structure like so:
 /path/to/.../code/
 ├── organization
 │   └── apple
-│       └── repos
-│           ├── forked
-│           │   └── LLVM
-│           ├── private
-│           │   └── applesPrivateCode
-│           └── public
-│               └── swift
+│       ├── repos
+│       │   ├── forked
+│       │   │   └── LLVM
+│       │   ├── private
+│       │   │   └── applesPrivateCode
+│       │   └── public
+│       │       └── swift
+│       └── gists (...same structure)
 └── user
     └── armcknight
-        └── repos
-            ├── forked
-            │   └── apple
-            │       └── swift
-            ├── private
-            │   └── myPrivateCode
-            ├── public
-            │   ├── AdventOfCode
-            │   ├── armcknight
-            │   └── armcknight.wiki
-            └── starred
-                ├── juanfont
-                │   └── headscale
-                └── sindresorhus
-                    └── awesome
+        ├── repos
+        │   ├── forked
+        │   │   └── apple
+        │   │       └── swift
+        │   ├── private
+        │   │   └── myPrivateCode
+        │   ├── public
+        │   │   ├── AdventOfCode
+        │   │   ├── armcknight
+        │   │   └── armcknight.wiki
+        │   └── starred
+        │       ├── juanfont
+        │       │   └── headscale
+        │       └── sindresorhus
+        │           └── awesome
+        └── gists (...same structure)
 ```
 
 ### `sync` (*WIP*)
