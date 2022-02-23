@@ -18,6 +18,37 @@ Can optionally be used for an organization instead of a user account.
 
 Each repo's directory will be tagged with the language and topics from the repo (using [`tag`](https://github.com/jdberry/tag)).
 
+It builds a directory structure like so:
+```
+/path/to/.../code/
+├── organization
+│   └── apple
+│       └── repos
+│           ├── forked
+│           │   └── LLVM
+│           ├── private
+│           │   └── applesPrivateCode
+│           └── public
+│               └── swift
+└── user
+    └── armcknight
+        └── repos
+            ├── forked
+            │   └── apple
+            │       └── swift
+            ├── private
+            │   └── myPrivateCode
+            ├── public
+            │   ├── AdventOfCode
+            │   ├── armcknight
+            │   └── armcknight.wiki
+            └── starred
+                ├── juanfont
+                │   └── headscale
+                └── sindresorhus
+                    └── awesome
+```
+
 ### `sync` (*WIP*)
 
 Go through cloned repos and update them by doing things like fetching/fast-forwarding commits (and optionally for forks, pushing commits from upstream to the remote fork), updating topic/language tags, and pruning local repos that no longer apply from remote, like unstarred repos.
