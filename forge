@@ -53,6 +53,9 @@ def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     if not no_wikis:
         _clone_wiki(repo, clone_path)
 
+def _gist_ssh_url(gist):
+    gist_path = gist.git_pull_url.replace('https://gist.github.com/', '')
+    return f'git@gist.github.com:{gist_path}'
 @arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
 @arg('base_path', help='Location of the repos to sync')
 def sync(access_token, base_path, prune=False):
@@ -140,20 +143,16 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     for gist in account.get_gists():
         if gist.fork_of is not None:
             upstream = g.get_gist(gist.fork_of.id)
-            gist_url = upstream.git_pull_url.replace('https://gist.github.com/', '')
-            gist_ssh_url = f'git@gist.github.com:{gist_url}'
-            _clone_repo(gist_ssh_url, f'{forked_gists_path}/{upstream.owner.login}/{gist.description}')
+            _clone_repo(_gist_ssh_url(upstream), f'{forked_gists_path}/{upstream.owner.login}/{gist.description}')
         else:
-            gist_url = gist.git_pull_url.replace('https://gist.github.com/', '')
-            gist_ssh_url = f'git@gist.github.com:{gist_url}'
+            gist_ssh_url = _gist_ssh_url(gist)
             if gist.public:
                 _clone_repo(gist_ssh_url, f'{public_gists_path}/{gist.description}')
             else:
                 _clone_repo(gist_ssh_url, f'{private_gists_path}/{gist.description}')
     if organization is None and not no_starred_gists:
         for gist in account.get_starred_gists():
-            gist_url = gist.git_pull_url.replace('https://gist.github.com/', '')
-            gist_ssh_url = f'git@gist.github.com:{gist_url}'
+            gist_ssh_url = _gist_ssh_url(gist)
             _clone_repo(gist_ssh_url, f'{starred_gists_path}/{gist.owner.login}/{gist.description}')
 
 parser = argh.ArghParser()
