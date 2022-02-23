@@ -21,11 +21,10 @@ _gists_subpath = 'gitst'
 def _clone_repo(ssh_url, clone_path):
     'Clone a repo to a path and return True, or skip and return False if it already exists there.'
     if not os.path.exists(clone_path):
-        print(f'cloning {repo.full_name}')
         subprocess.check_call(['git', 'clone', ssh_url, clone_path])
         return True
     else:
-        print('repo already cloned')
+        print(f'{ssh_url} already cloned')
         return False
 
 def _clone_wiki(repo, clone_path):
@@ -39,7 +38,7 @@ def _clone_wiki(repo, clone_path):
             if not os.path.exists(wiki_path):
                 subprocess.check_call(['git', 'clone', wiki_url, wiki_path])
             else:
-                print('wiki already cloned')
+                print(f'{wiki_url} already cloned')
 
 def _tag_repo(repo, clone_path):
     topics = repo.get_topics()
