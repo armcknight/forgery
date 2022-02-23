@@ -8,7 +8,9 @@ Automatically clone and sync repositories from a forge such as GitHub to a macOS
 - Run `make init`.
 - Run `./forge -h`.
 
-## `clone`
+## Commands
+
+###  `clone`
 
 By default, pulls a listing of all of your public, private, starred and forked repos and gists (which are backed by git repos), and associated repo wikis (which are also git repos), and clones them all locally.
 
