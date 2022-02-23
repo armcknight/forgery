@@ -118,7 +118,7 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     public_path = f'{repos_path}/{_public_subpath}'
     private_path = f'{repos_path}/{_private_subpath}'
     subprocess.check_call(['mkdir', '-p', fork_path, star_path, public_path, private_path])
-    for repo in account.get_repos():
+    for repo in account.get_repos(affiliation='owner'):
         if repo.fork:
             if no_forked_repos:
                 continue
