@@ -162,7 +162,9 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     star_path = f'{repos_path}/{_starred_subpath}'
     public_path = f'{repos_path}/{_public_subpath}'
     private_path = f'{repos_path}/{_private_subpath}'
-    subprocess.check_call(['mkdir', '-p', fork_path, star_path, public_path, private_path])
+    subprocess.check_call(['mkdir', '-p', fork_path, public_path, private_path])
+    if organization is None:
+        subprocess.check_call(['mkdir', '-p', star_path])
     for repo in repos:
         if repo.fork:
             if no_forked_repos:
@@ -191,7 +193,9 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     private_gists_path = f'{gists_path}/{_private_subpath}'
     starred_gists_path = f'{gists_path}/{_starred_subpath}'
     forked_gists_path = f'{gists_path}/{_forked_subpath}'
-    subprocess.check_call(['mkdir', '-p', starred_gists_path, public_gists_path, private_gists_path])
+    subprocess.check_call(['mkdir', '-p', public_gists_path, private_gists_path])
+    if organization is None:
+        subprocess.check_call(['mkdir', '-p', starred_gists_path])
     for gist in account.get_gists():
         if gist.fork_of is not None:
             upstream = g.get_gist(gist.fork_of.id)
