@@ -42,6 +42,7 @@ def _clone_wiki(repo, clone_path):
                 print(f'{wiki_url} already cloned')
 
 def _tag_repo(repo, clone_path):
+    'Set tags on the local repo directory with the language and topics from the GitHub repo, if present.'
     topics = repo.get_topics()
     if (topics is None or len(topics) == 0) and repo.language is None:
         return
@@ -62,10 +63,12 @@ def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
         _clone_wiki(repo, clone_path)
 
 def _gist_ssh_url(gist):
+    'Because gist entries from the GitHub API don\'t include an SSH url for cloning (but that does work in practice) this function takes the HTTPS address, pulls apart the necessary info, and reformulates it into an SSH Git URL.'
     gist_path = gist.git_pull_url.replace('https://gist.github.com/', '')
     return f'git@gist.github.com:{gist_path}'
 
 def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prune, public=False, private=False, forked=False, gist=False):
+    'Given a path to a local repo and list of remote repositories, fetch and fast-forward commits from upstream. If it\'s a fork, optionally push to the remote downstream fork. If the local repo is no longer in the list of remote repos, optionally prune it by deleting the local clone.'
     for repo in os.scandir(path):
         if len(filter(lambda x:
                         (
@@ -105,33 +108,32 @@ def sync(access_token, base_path, push_to_fork_remotes=False, prune=False):
                 remote_starred_repos = account.get_starred()
                 remote_gists = account.get_gists()
                 remote_starred_gists = account.get_starred_gists()
-                _update_local_repos_under(f'{user_dir}/{_repos_subpath}/{_public_subpath}', push_to_fork_remotes, prune, remote_repos, public=True)
-                _update_local_repos_under(f'{user_dir}/{_repos_subpath}/{_private_subpath}', push_to_fork_remotes, prune, remote_repos, private=True)
-                _update_local_repos_under(f'{user_dir}/{_repos_subpath}/{_forked_subpath}', push_to_fork_remotes, prune, remote_repos, forked=True)
-                _update_local_repos_under(f'{user_dir}/{_repos_subpath}/{_starred_subpath}', push_to_fork_remotes, prune, remote_starred_repos)
-                _update_local_repos_under(f'{user_dir}/{_gists_subpath}/{_public_subpath}', push_to_fork_remotes, prune, remote_gists, public=True, gist=True)
-                _update_local_repos_under(f'{user_dir}/{_gists_subpath}/{_private_subpath}', push_to_fork_remotes, prune, remote_gists, private=True, gist=True)
-                _update_local_repos_under(f'{user_dir}/{_gists_subpath}/{_forked_subpath}', push_to_fork_remotes, prune, remote_gists, forked=True, gist=True)
-                _update_local_repos_under(f'{user_dir}/{_gists_subpath}/{_starred_subpath}', push_to_fork_remotes, prune, remote_starred_gists, gist=True)
-        # elif account_type == _organization:
-        #     for user in os.scandir(f'{base_path}/{_organization}'):
-        #         account = g.get_organization(organization)
-        #         remote_repos = account.get_repos()
-        #         remote_gists = account.get_gists()
+                user_repos_path = f'{user_dir}/{_repos_subpath}'
+                user_gists_path = f'{user_dir}/{_gists_subpath}'
+                _update_local_repos_under(f'{user_repos_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_repos, public=True)
+                _update_local_repos_under(f'{user_repos_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_repos, private=True)
+                _update_local_repos_under(f'{user_repos_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_repos, forked=True)
+                _update_local_repos_under(f'{user_repos_path}/{_starred_subpath}', push_to_fork_remotes, prune, remote_starred_repos)
+                _update_local_repos_under(f'{user_gists_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_gists, public=True, gist=True)
+                _update_local_repos_under(f'{user_gists_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_gists, private=True, gist=True)
+                _update_local_repos_under(f'{user_gists_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_gists, forked=True, gist=True)
+                _update_local_repos_under(f'{user_gists_path}/{_starred_subpath}', push_to_fork_remotes, prune, remote_starred_gists, gist=True)
+        elif account_type == _organization:
+            org_dir = f'{base_path}/{_organization}'
+            for org in os.scandir(org_dir):
+                account = g.get_organization(org)
+                remote_repos = account.get_repos()
+                remote_gists = account.get_gists()
+                org_repos_path = f'{org_dir}/{_repos_subpath}'
+                org_gists_path = f'{org_dir}/{_gists_subpath}'
+                _update_local_repos_under(f'{org_repos_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_repos, public=True)
+                _update_local_repos_under(f'{org_repos_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_repos, private=True)
+                _update_local_repos_under(f'{org_repos_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_repos, forked=True)
+                _update_local_repos_under(f'{org_gists_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_gists, public=True, gist=True)
+                _update_local_repos_under(f'{org_gists_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_gists, private=True, gist=True)
+                _update_local_repos_under(f'{org_gists_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_gists, forked=True, gist=True)
         else:
-            print(f'unexpected account type directory: {account_type}')
-
-        # build list of locally cloned repos
-
-
-        # get list of repos from GitHub
-
-
-        # update tags
-
-
-        # fetch/fast-forward
-
+            print(f'unexpected account type directory: {account_type}; expected either `{_user}` or `{_organization}`')
 
 @arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
 @arg('base_path', help='Location of the repos to sync')
