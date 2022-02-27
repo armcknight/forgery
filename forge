@@ -202,6 +202,10 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             if _clone_repo(repo.ssh_url, clone_path):
                 subprocess.check_call(['git', 'remote', 'rename', 'origin', 'fork'], cwd=clone_path)
                 subprocess.check_call(['git', 'remote', 'add', 'upstream', r.parent.ssh_url], cwd=clone_path)
+                default_branch = subprocess.check_output('git rev-parse --abbrev-ref fork/HEAD | cut -c6-', shell=True, encoding='utf-8', cwd=clone_path).strip()
+                subprocess.check_call(['git', 'config', '--unset', f'branch.{default_branch}.remote'], cwd=clone_path)
+                subprocess.check_call(['git', 'config', '--add', f'branch.{default_branch}.remote', 'upstream'], cwd=clone_path)
+                subprocess.check_call(['git', 'config', '--add', f'branch.{default_branch}.pushRemote', 'fork'], cwd=clone_path)
                 _tag_repo(r.parent, clone_path)
                 if not no_wikis:
                     _clone_wiki(r.parent, clone_path)
