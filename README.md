@@ -56,3 +56,9 @@ It builds a directory structure like so:
 ### `sync` (*WIP*)
 
 Go through cloned repos and update them by doing things like fetching/fast-forwarding commits (and optionally for forks, pushing commits from `upstream` to `fork`), updating topic/language tags, and pruning local repos that no longer apply from remote, like unstarred repos.
+
+## TODO
+
+- pull with rebase to replay current local commits onto latest upstream, stashing uncommitted changes
+- move repos/gists between public/private directories in case those permissions are switched by the upstream owner
+- collect and print errors instread of failing out of the script
