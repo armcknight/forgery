@@ -26,13 +26,12 @@ It builds a directory structure like so:
 ├── organization
 │   └── apple
 │       ├── repos
-│       │   ├── forked
-│       │   │   └── LLVM
-│       │   ├── private
-│       │   │   └── applesPrivateCode
-│       │   └── public
-│       │       └── swift
-│       └── gists (...same structure)
+│           ├── forked
+│           │   └── LLVM
+│           ├── private
+│           │   └── applesPrivateCode
+│           └── public
+│               └── swift
 └── user
     └── armcknight
         ├── repos
