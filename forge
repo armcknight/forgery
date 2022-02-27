@@ -67,23 +67,39 @@ def _gist_ssh_url(gist):
     gist_path = gist.git_pull_url.replace('https://gist.github.com/', '')
     return f'git@gist.github.com:{gist_path}'
 
-def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prune, public=False, private=False, forked=False, gist=False):
+def _is_kind_of_repo_to_sync(x, gist, repo, public, private, forked, starred):
+    'Determine if the repo passed in as `x` should be synced based on its properties and the provided options.'
+    if gist:
+        return (
+            x.name == repo.description
+            and (
+                (public and x.public)
+                or (private and not x.public)
+                or (forked and x.fork_of is not None)
+            )
+        )
+    else:
+        return (
+            x.name == repo.name
+            and (
+                starred
+                or (public and not x.private)
+                or (private and x.private)
+                or (forked and x.fork)
+            )
+        )
+
+def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prune, public=False, private=False, forked=False, gist=False, starred=False):
     'Given a path to a local repo and list of remote repositories, fetch and fast-forward commits from upstream. If it\'s a fork, optionally push to the remote downstream fork. If the local repo is no longer in the list of remote repos, optionally prune it by deleting the local clone.'
+    if not os.path.exists(path):
+        return
     for repo in os.scandir(path):
-        if len(filter(lambda x:
-                        (
-                            (gist and x.name == repo.description)
-                            or (not gist and x.name == repo.name)
-                        ) and (
-                            (public and x.public)
-                            or (priavte and not x.public)
-                            or (forked and x.fork)
-                        ),
-                        remote_repo_list)) > 0:
+        if len([x for x in remote_repo_list if _is_kind_of_repo_to_sync(x, gist, repo, public, private, forked, starred)]) > 0:
             if forked:
                 remote_name = 'upstream'
             else:
                 remote_name = 'origin'
+            print(f'syncing {repo.path}')
             subprocess.check_call(f'git fetch {remote_name} && git pull --ff-only {remote_name}', shell=True, cwd=repo.path)
             if push_to_fork_remotes:
                 subprocess.check_call(['git', 'push', remote_name], cwd=repo.path)
@@ -96,42 +112,53 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
 @arg('--push_to_fork_remotes', help='After fast-forwarding any new commits from forks\' remote upstreams, push the new commitsto fork remotes.', default=False)
 @arg('--prune', help='If a local repository is no longer listed from the server, remove its local clone.')
 def sync(access_token, base_path, push_to_fork_remotes=False, prune=False):
-    'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private repos should be synced, using their access tokens in turn.'
-    # iterate through local repos per account/organization
+    'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private and starred repos/gists should be synced, using their access tokens in turn.'
     g = Github(access_token)
-    for account_types in os.scandir(base_path):
-        if account_type == _user:
+    authenticated_user = g.get_user()
+    for account_type in os.scandir(base_path):
+        if account_type.name == '.DS_Store':
+            continue
+        if account_type.name == _user:
             user_dir = f'{base_path}/{_user}'
             for user in os.scandir(user_dir):
-                account = g.get_user(user)
-                remote_repos = account.get_repos()
-                remote_starred_repos = account.get_starred()
-                remote_gists = account.get_gists()
-                remote_starred_gists = account.get_starred_gists()
-                user_repos_path = f'{user_dir}/{_repos_subpath}'
-                user_gists_path = f'{user_dir}/{_gists_subpath}'
-                _update_local_repos_under(f'{user_repos_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_repos, public=True)
-                _update_local_repos_under(f'{user_repos_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_repos, private=True)
-                _update_local_repos_under(f'{user_repos_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_repos, forked=True)
-                _update_local_repos_under(f'{user_repos_path}/{_starred_subpath}', push_to_fork_remotes, prune, remote_starred_repos)
-                _update_local_repos_under(f'{user_gists_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_gists, public=True, gist=True)
-                _update_local_repos_under(f'{user_gists_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_gists, private=True, gist=True)
-                _update_local_repos_under(f'{user_gists_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_gists, forked=True, gist=True)
-                _update_local_repos_under(f'{user_gists_path}/{_starred_subpath}', push_to_fork_remotes, prune, remote_starred_gists, gist=True)
-        elif account_type == _organization:
-            org_dir = f'{base_path}/{_organization}'
-            for org in os.scandir(org_dir):
-                account = g.get_organization(org)
+                if user.name == '.DS_Store':
+                    continue
+                account = g.get_user(user.name)
                 remote_repos = account.get_repos()
                 remote_gists = account.get_gists()
-                org_repos_path = f'{org_dir}/{_repos_subpath}'
-                org_gists_path = f'{org_dir}/{_gists_subpath}'
-                _update_local_repos_under(f'{org_repos_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_repos, public=True)
-                _update_local_repos_under(f'{org_repos_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_repos, private=True)
-                _update_local_repos_under(f'{org_repos_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_repos, forked=True)
-                _update_local_repos_under(f'{org_gists_path}/{_public_subpath}', push_to_fork_remotes, prune, remote_gists, public=True, gist=True)
-                _update_local_repos_under(f'{org_gists_path}/{_private_subpath}', push_to_fork_remotes, prune, remote_gists, private=True, gist=True)
-                _update_local_repos_under(f'{org_gists_path}/{_forked_subpath}', push_to_fork_remotes, prune, remote_gists, forked=True, gist=True)
+                user_repos_path = f'{user_dir}/{user.name}/{_repos_subpath}'
+                user_gists_path = f'{user_dir}/{user.name}/{_gists_subpath}'
+                _update_local_repos_under(f'{user_repos_path}/{_public_subpath}', remote_repos, push_to_fork_remotes, prune, public=True)
+                _update_local_repos_under(f'{user_gists_path}/{_public_subpath}', remote_gists, push_to_fork_remotes, prune, public=True, gist=True)
+                for forked_repo in os.scandir(f'{user_repos_path}/{_forked_subpath}'):
+                    _update_local_repos_under(forked_repo.path, remote_repos, push_to_fork_remotes, prune, forked=True)
+                for forked_gist in os.scandir(f'{user_gists_path}/{_forked_subpath}'):
+                    _update_local_repos_under(forked_gist.path, remote_gists, push_to_fork_remotes, prune, forked=True, gist=True)
+                if authenticated_user == user.name:
+                    remote_starred_repos = account.get_starred()
+                    remote_starred_gists = account.get_starred_gists()
+                    _update_local_repos_under(f'{user_repos_path}/{_private_subpath}', remote_repos, push_to_fork_remotes, prune, private=True)
+                    _update_local_repos_under(f'{user_gists_path}/{_private_subpath}', remote_gists, push_to_fork_remotes, prune, private=True, gist=True)
+                    for starred_repo in os.scandir(f'{user_repos_path}/{_starred_subpath}'):
+                        _update_local_repos_under(starred_repo.path, remote_starred_repos, push_to_fork_remotes, prune, starred=True)
+                    for starred_gist in os.scandir(f'{user_gists_path}/{_starred_subpath}'):
+                        _update_local_repos_under(starred_gist.path, remote_starred_gists, push_to_fork_remotes, prune, gist=True, starred=True)
+        elif account_type.name == _organization:
+            for org in os.scandir(f'{base_path}/{_organization}'):
+                if org.name == '.DS_Store':
+                    continue
+                account = g.get_organization(org.name)
+                remote_repos = account.get_repos()
+                remote_public_gists = account.public_gists
+                remote_private_gists = account.private_gists
+                org_repos_path = f'{org.path}/{_repos_subpath}'
+                org_gists_path = f'{org.path}/{_gists_subpath}'
+                _update_local_repos_under(f'{org_repos_path}/{_public_subpath}', remote_repos, push_to_fork_remotes, prune, public=True)
+                _update_local_repos_under(f'{org_gists_path}/{_public_subpath}', remote_public_gists, push_to_fork_remotes, prune, public=True, gist=True)
+                for forked_repo in os.scandir(f'{org_repos_path}/{_forked_subpath}'):
+                    _update_local_repos_under(forked_repo.path, remote_repos, push_to_fork_remotes, prune, forked=True)
+                _update_local_repos_under(f'{org_repos_path}/{_private_subpath}', remote_repos, push_to_fork_remotes, prune, private=True)
+                _update_local_repos_under(f'{org_gists_path}/{_private_subpath}', remote_private_gists, push_to_fork_remotes, prune, private=True, gist=True)
         else:
             print(f'unexpected account type directory: {account_type}; expected either `{_user}` or `{_organization}`')
 
