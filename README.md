@@ -25,9 +25,10 @@ It builds a directory structure like so:
 /path/to/.../code/
 ├── organization
 │   └── apple
-│       ├── repos
+│       └── repos
 │           ├── forked
 │           │   └── LLVM
+│           │       └── LLVM
 │           ├── private
 │           │   └── applesPrivateCode
 │           └── public
