@@ -53,7 +53,7 @@ It builds a directory structure like so:
         └── gists (...same structure)
 ```
 
-### `sync` (*WIP*)
+### `sync`
 
 Go through cloned repos and update them by doing things like fetching/fast-forwarding commits (and optionally for forks, pushing commits from `upstream` to `fork`), updating topic/language tags, and pruning local repos that no longer apply from remote, like unstarred repos.
 

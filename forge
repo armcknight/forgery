@@ -94,7 +94,9 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
     if not os.path.exists(path):
         return
     for repo in os.scandir(path):
-        if len([x for x in remote_repo_list if _is_kind_of_repo_to_sync(x, gist, repo, public, private, forked, starred)]) > 0:
+        repos_to_sync = [x for x in remote_repo_list if _is_kind_of_repo_to_sync(x, gist, repo, public, private, forked, starred)]
+        repo_to_sync = next(iter(repos_to_sync), None)
+        if repo_to_sync is not None:
             if forked:
                 remote_name = 'upstream'
             else:
@@ -103,6 +105,7 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
             subprocess.check_call(f'git fetch {remote_name} && git pull --ff-only {remote_name}', shell=True, cwd=repo.path)
             if push_to_fork_remotes:
                 subprocess.check_call(['git', 'push', remote_name], cwd=repo.path)
+            _tag_repo(repo_to_sync, repo.path)
         elif prune:
             print(f'pruning {repo.path}')
             shutil.rmtree(repo.path)
