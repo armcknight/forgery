@@ -12,7 +12,7 @@ Automatically clone and sync repositories from a forge such as GitHub to a macOS
 
 ###  `clone`
 
-By default, pulls a listing of all of your public, private, starred and forked repos and gists (which are backed by git repos), and associated repo wikis (which are also git repos), and clones them all locally.
+By default, pulls a listing of all of your public, private, starred and forked repos and gists (which are backed by git repos), and associated repo wikis (which are also git repos), and clones them locally on their default branch.
 
 Can optionally be used for an organization instead of a user account.
 
@@ -60,5 +60,6 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 ## TODO
 
 - pull with rebase to replay current local topic branch commits onto latest upstream default branch, stashing uncommitted changes
+- forks fetch/fast-forward from `fork` remote first, then pull with rebase from `upstream`, then optionally force-push that back up to `fork`
 - move repos/gists between public/private directories in case those permissions are switched by the upstream owner
 - collect and print errors instread of failing out of the script
