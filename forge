@@ -29,7 +29,7 @@ def _clone_repo(ssh_url, clone_path):
         return False
 
 def _remote_repo_exists(repo_ssh_url):
-    p = subprocess.Popen(['git', 'ls-remote', '-h', wiki_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    p = subprocess.Popen(['git', 'ls-remote', '-h', repo_ssh_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     p.communicate()
     return p.returncode == 0
 
