@@ -62,3 +62,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - pull with rebase to replay current local topic branch commits onto latest upstream default branch, stashing uncommitted changes
 - move repos/gists between public/private directories in case those permissions are switched by the upstream owner
 - collect and print errors instread of failing out of the script
+
+## Known Issues
+
+- If the original version of a forked repo is removed, certain operations can fail (like querying for its topics/language to tag the repo directory, or syncing from upstream).
