@@ -41,7 +41,7 @@ def _clone_wiki(repo, clone_path):
             else:
                 print(f'{wiki_url} already cloned')
 
-def _tag_repo(repo, clone_path):
+def _tag_repo(repo, clone_path, clear_first=False):
     'Set tags on the local repo directory with the language and topics from the GitHub repo, if present.'
     topics = repo.get_topics()
     if (topics is None or len(topics) == 0) and repo.language is None:
@@ -52,7 +52,11 @@ def _tag_repo(repo, clone_path):
         taglist = []
     if repo.language is not None:
         taglist.append(repo.language.lower())
-    subprocess.check_call(['tag', '-a', ','.join({tag for tag in taglist}), clone_path])
+    if clear_first:
+        current_tags = subprocess.check_output(['tag', '--no-name', clone_path], encoding='utf-8').strip()
+        subprocess.check_call(['tag', '-r', f'"{current_tags}"'])
+    new_tags = ','.join({tag for tag in taglist}
+    subprocess.check_call(['tag', '-a', f'"{new_tags}"'), clone_path])
 
 def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     'Clone a normal repo and any associated wiki.'
@@ -105,7 +109,7 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
             subprocess.check_call(f'git fetch {remote_name} && git pull --ff-only {remote_name}', shell=True, cwd=repo.path)
             if push_to_fork_remotes:
                 subprocess.check_call(['git', 'push', remote_name], cwd=repo.path)
-            _tag_repo(repo_to_sync, repo.path)
+            _tag_repo(repo_to_sync, repo.path, clear_first=True)
         elif prune:
             print(f'pruning {repo.path}')
             shutil.rmtree(repo.path)
