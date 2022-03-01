@@ -18,7 +18,7 @@ Can optionally be used for an organization instead of a user account.
 
 Each repo's directory will be tagged with the language and topics from the repo (using [`tag`](https://github.com/jdberry/tag)).
 
-Forks get their `origin` remote renamed to `fork` and get a second remote added named `upstream` that points to the original repo that was forked.
+Forks get their `origin` remote renamed to `fork` (also set as `branch.$(default).pushRemote`) and get a second remote added named `upstream` that points to the original repo that was forked (which is set as `branch.$(default).remote` for default pull source).
 
 It builds a directory structure like so:
 ```
