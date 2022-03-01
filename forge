@@ -58,8 +58,8 @@ def _tag_repo(repo, clone_path, clear_first=False):
     if clear_first:
         current_tags = subprocess.check_output(['tag', '--no-name', clone_path], encoding='utf-8').strip()
         subprocess.check_call(['tag', '-r', f'"{current_tags}"'])
-    new_tags = ','.join({tag for tag in taglist}
-    subprocess.check_call(['tag', '-a', f'"{new_tags}"'), clone_path])
+    new_tags = ','.join({tag for tag in taglist})
+    subprocess.check_call(['tag', '-a', f'"{new_tags}"', clone_path])
 
 def _clone_nonforked_repo(repo, repo_type_path, no_wikis):
     'Clone a normal repo and any associated wiki.'
