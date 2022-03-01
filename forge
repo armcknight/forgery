@@ -28,13 +28,16 @@ def _clone_repo(ssh_url, clone_path):
         print(f'{ssh_url} already cloned')
         return False
 
+def _remote_repo_exists(repo_ssh_url):
+    p = subprocess.Popen(['git', 'ls-remote', '-h', wiki_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    p.communicate()
+    return p.returncode == 0
+
 def _clone_wiki(repo, clone_path):
     'Clone the wiki associated with a repo, or skip if it already exists locally.'
     if repo.has_wiki:
         wiki_url = f'git@github.com:{repo.full_name}.wiki.git'
-        p = subprocess.Popen(['git', 'ls-remote', '-h', wiki_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        p.communicate()
-        if p.returncode == 0:
+        if _remote_repo_exists(wiki_url):
             wiki_path = f'{clone_path}.wiki'
             if not os.path.exists(wiki_path):
                 subprocess.check_call(['git', 'clone', wiki_url, wiki_path])
@@ -208,6 +211,8 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             clone_path = f'{fork_path}/{r.parent.owner.login}/{repo.name}'
             if _clone_repo(repo.ssh_url, clone_path):
                 subprocess.check_call(['git', 'remote', 'rename', 'origin', 'fork'], cwd=clone_path)
+                if not _remote_repo_exists(r.parent.ssh_url):
+                    continue
                 subprocess.check_call(['git', 'remote', 'add', 'upstream', r.parent.ssh_url], cwd=clone_path)
                 default_branch = subprocess.check_output('git rev-parse --abbrev-ref fork/HEAD | cut -c6-', shell=True, encoding='utf-8', cwd=clone_path).strip()
                 subprocess.check_call(['git', 'config', '--unset', f'branch.{default_branch}.remote'], cwd=clone_path)
