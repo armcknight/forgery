@@ -22,6 +22,7 @@ _gists_subpath = 'gists'
 def _clone_repo(ssh_url, clone_path):
     'Clone a repo to a path and return True, or skip and return False if it already exists there.'
     if not os.path.exists(clone_path):
+        print(f'Cloning {ssh_url}...')
         subprocess.check_call(['git', 'clone', ssh_url, clone_path])
         return True
     else:
