@@ -184,8 +184,10 @@ def sync(access_token, base_path, push_to_fork_remotes=False, prune=False):
 @arg('--no_starred_gists', help='Do not clone the authenticated user\'s starred gists (does not apply to organizations)', default=False)
 @arg('--no_forked_gists', help='Do not clone the authenticated user\'s forked gists (does not apply to organiations)', default=False)
 @arg('--no_wikis', help='Do not clone wikis associated with any repos that are cloned', default=False)
+@arg('--no_repos', help='Do not clone any repos.', default=False)
+@arg('--no_gists', help='Do not clone any gists.', default=False)
 @arg('--organization', help='Instead of fetching the list of the authenticated user\'s repos, fetch the specified organzation\'s. This means there will be no starred repos/gists.', default=None, type=str)
-def clone(access_token, base_path, no_public_repos=False, no_private_repos=False, no_starred_repos=False, no_forked_repos=False, no_public_gists=False, no_private_gists=False, no_starred_gists=False, no_forked_gists=False, no_wikis=False, organization=None):
+def clone(access_token, base_path, no_public_repos=False, no_private_repos=False, no_starred_repos=False, no_forked_repos=False, no_public_gists=False, no_private_gists=False, no_starred_gists=False, no_forked_gists=False, no_wikis=False, no_repos=False, no_gists=False, organization=None):
     'Clone the public, private, starred and forked repos and gists, as well as any associated wikis, unless disabled with options, from the specified account managed by the provided access token, or optionally from a specified organization (which won\'t have starred repos or any gists).'
     g = Github(access_token)
     if organization is not None:
@@ -196,44 +198,47 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
         account = g.get_user()
         account_type = _user
         repos = account.get_repos(affiliation='owner')
-    repos_path = f'{base_path}/{account_type}/{account.login}/{_repos_subpath}'
-    fork_path = f'{repos_path}/{_forked_subpath}'
-    star_path = f'{repos_path}/{_starred_subpath}'
-    public_path = f'{repos_path}/{_public_subpath}'
-    private_path = f'{repos_path}/{_private_subpath}'
-    subprocess.check_call(['mkdir', '-p', fork_path, public_path, private_path])
-    if organization is None:
-        subprocess.check_call(['mkdir', '-p', star_path])
-    for repo in repos:
-        if repo.fork:
-            if no_forked_repos:
-                continue
-            r = g.get_repo(repo.full_name)
-            clone_path = f'{fork_path}/{r.parent.owner.login}/{repo.name}'
-            if _clone_repo(repo.ssh_url, clone_path):
-                subprocess.check_call(['git', 'remote', 'rename', 'origin', 'fork'], cwd=clone_path)
-                if not _remote_repo_exists(r.parent.ssh_url):
+    if not no_repos:
+        repos_path = f'{base_path}/{account_type}/{account.login}/{_repos_subpath}'
+        fork_path = f'{repos_path}/{_forked_subpath}'
+        star_path = f'{repos_path}/{_starred_subpath}'
+        public_path = f'{repos_path}/{_public_subpath}'
+        private_path = f'{repos_path}/{_private_subpath}'
+        subprocess.check_call(['mkdir', '-p', fork_path, public_path, private_path])
+        if organization is None and not no_starred_repos:
+            subprocess.check_call(['mkdir', '-p', star_path])
+        for repo in repos:
+            if repo.fork:
+                if no_forked_repos:
                     continue
-                subprocess.check_call(['git', 'remote', 'add', 'upstream', r.parent.ssh_url], cwd=clone_path)
-                default_branch = subprocess.check_output('git rev-parse --abbrev-ref fork/HEAD | cut -c6-', shell=True, encoding='utf-8', cwd=clone_path).strip()
-                subprocess.check_call(['git', 'config', '--unset', f'branch.{default_branch}.remote'], cwd=clone_path)
-                subprocess.check_call(['git', 'config', '--add', f'branch.{default_branch}.remote', 'upstream'], cwd=clone_path)
-                subprocess.check_call(['git', 'config', '--add', f'branch.{default_branch}.pushRemote', 'fork'], cwd=clone_path)
-                _tag_repo(r.parent, clone_path)
-                if not no_wikis:
-                    _clone_wiki(r.parent, clone_path)
-        elif repo.private:
-            if no_private_repos:
-                continue
-            _clone_nonforked_repo(repo, private_path, no_wikis)
-        else:
-            if no_public_repos:
-                continue
-            _clone_nonforked_repo(repo, public_path, no_wikis)
-    if organization is None and not no_starred_repos:
-        for repo in account.get_starred():
-            _clone_nonforked_repo(repo, f'{star_path}/{repo.owner.login}', no_wikis)
+                r = g.get_repo(repo.full_name)
+                clone_path = f'{fork_path}/{r.parent.owner.login}/{repo.name}'
+                if _clone_repo(repo.ssh_url, clone_path):
+                    subprocess.check_call(['git', 'remote', 'rename', 'origin', 'fork'], cwd=clone_path)
+                    if not _remote_repo_exists(r.parent.ssh_url):
+                        continue
+                    subprocess.check_call(['git', 'remote', 'add', 'upstream', r.parent.ssh_url], cwd=clone_path)
+                    default_branch = subprocess.check_output('git rev-parse --abbrev-ref fork/HEAD | cut -c6-', shell=True, encoding='utf-8', cwd=clone_path).strip()
+                    subprocess.check_call(['git', 'config', '--unset', f'branch.{default_branch}.remote'], cwd=clone_path)
+                    subprocess.check_call(['git', 'config', '--add', f'branch.{default_branch}.remote', 'upstream'], cwd=clone_path)
+                    subprocess.check_call(['git', 'config', '--add', f'branch.{default_branch}.pushRemote', 'fork'], cwd=clone_path)
+                    _tag_repo(r.parent, clone_path)
+                    if not no_wikis:
+                        _clone_wiki(r.parent, clone_path)
+            elif repo.private:
+                if no_private_repos:
+                    continue
+                _clone_nonforked_repo(repo, private_path, no_wikis)
+            else:
+                if no_public_repos:
+                    continue
+                _clone_nonforked_repo(repo, public_path, no_wikis)
+        if organization is None and not no_starred_repos:
+            for repo in account.get_starred():
+                _clone_nonforked_repo(repo, f'{star_path}/{repo.owner.login}', no_wikis)
     if organization is not None: # orgs don't have gists, so we can skip all the logic to clone them
+        return
+    if no_gists:
         return
     gists_path = f'{base_path}/{account_type}/{account.login}/{_gists_subpath}'
     public_gists_path = f'{gists_path}/{_public_subpath}'
