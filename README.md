@@ -67,3 +67,4 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - [ ] add option to create a cron job from the current invocation
 - [ ] allow listing multiple organizations
 - [x] update submodules recursivey, with an option to rebase them in `sync`
+- [ ] add a `status` command to report current status of all managed repos
