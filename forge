@@ -24,6 +24,7 @@ def _clone_repo(ssh_url, clone_path):
     if not os.path.exists(clone_path):
         print(f'Cloning {ssh_url}...')
         subprocess.check_call(['git', 'clone', ssh_url, clone_path])
+        subprocess.check_call(['git', 'submodule', 'update', '--init', '--recursive'], cwd=clone_path)
         return True
     else:
         print(f'{ssh_url} already cloned')
@@ -97,7 +98,7 @@ def _is_kind_of_repo_to_sync(x, gist, repo, public, private, forked, starred):
             )
         )
 
-def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prune, pull_with_rebase, push_after_rebase, public=False, private=False, forked=False, gist=False, starred=False):
+def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prune, pull_with_rebase, push_after_rebase, rebase_submodules, public=False, private=False, forked=False, gist=False, starred=False):
     'Given a path to a local repo and list of remote repositories, fetch and fast-forward commits from upstream. If it\'s a fork, pull (--ff-only or --rebase) from `fork` remote and then always pull --rebase from `upstream`, then optionally push to the remote downstream fork. If the local repo is no longer in the list of remote repos, optionally prune it by deleting the local clone.'
     if not os.path.exists(path):
         return
@@ -115,6 +116,10 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
             if pull_with_rebase or forked:
                 git_pull_option = '--rebase'
             subprocess.check_call(f'git fetch {remote_name} && git pull {git_pull_option} {remote_name}', shell=True, cwd=repo.path)
+            submodule_update_args = ['git', 'submodule','--init', '--recursive']
+            if rebase_submodules:
+                submodule_update_args.append('--rebase')
+            subprocess.check_call(submodule_update_args, cwd=repo.path)
             if (forked and push_to_fork_remotes) or (not forked and pull_with_rebase and push_after_rebase):
                 subprocess.check_call(['git', 'push', remote_name], cwd=repo.path)
             _tag_repo(repo_to_sync, repo.path, clear_first=True)
@@ -128,6 +133,7 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
 @arg('--prune', help='If a local repository is no longer listed from the server, remove its local clone.')
 @arg('--pull_with_rebase', help='Run `git pull --rebase` to rebase any local commits on top of the remote HEAD. (By default, `sync` runs `git pull --ff-only`.)', default=False)
 @arg('--push_to_remotes', help='If --pull_with_rebase is provided, push HEAD to remote after rebasing any local commits on top of pulled remote commits.', default=False)
+@arg('--rebase_submodules', help='If development has occurred in a submodule, the changes are rebased onto any updated submodule commit hash that is pulled down as part of updating the superproject. See `man git-submodule` -> update -> rebase.)')
 def sync(access_token, base_path, push_to_fork_remotes=False, prune=False, pull_with_rebase=False, push_to_remotes=False):
     'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Forks pull from `fork` remote first, then try to rebase HEAD on top of any new `upstream` remote commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private and starred repos/gists should be synced, using their access tokens in turn.'
     g = Github(access_token)
