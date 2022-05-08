@@ -127,6 +127,71 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
             print(f'pruning {repo.path}')
             shutil.rmtree(repo.path)
 
+def _report_statuses_under(path):
+    'Given a path to a directory containing a collection of any type of locally cloned repos, descend into each, fetch and report `git status`. Forks get a status for both the `fork` and `upstream` origins.'
+    if not os.path.exists(path):
+        return
+    for repo in os.scandir(path):
+        if forked:
+            subprocess.check_call(f'git fetch fork && git fetch upstream && git status', shell=True, cwd=repo.path)
+        else:
+            subprocess.check_call(f'git fetch origin && git status', shell=True, cwd=repo.path)
+
+@arg('base_path', help='Location of the repos for which to report statuses.')
+@arg('--access_token', help='The GitHub access token of the GitHub user whose repos private repos should be reported in addition to public repos.')
+def status(base_path, access_token=None):
+    'Report on the statuses of all cloned repositories at `base_path`. By default only reports on public repositories; in order to also report on private repos, use the `--access_token` option.'
+    g = Github(access_token)
+    for account_type in os.scandir(base_path):
+        if account_type.name == '.DS_Store':
+            continue
+        if account_type.name == _user:
+            user_dir = f'{base_path}/{_user}'
+            for user in os.scandir(user_dir):
+                if user.name == '.DS_Store':
+                    continue
+                user_repos_path = f'{user_dir}/{user.name}/{_repos_subpath}'
+                user_gists_path = f'{user_dir}/{user.name}/{_gists_subpath}'
+                _report_statuses_under(f'{user_repos_path}/{_public_subpath}')
+                _report_statuses_under(f'{user_gists_path}/{_public_subpath}')
+                for forked_repo in os.scandir(f'{user_repos_path}/{_forked_subpath}'):
+                    _report_statuses_under(forked_repo.path)
+                for forked_gist in os.scandir(f'{user_gists_path}/{_forked_subpath}'):
+                    _report_statuses_under(forked_gist.path)
+                if access_token is not None:
+                    authenticated_user = g.get_user()
+                if authenticated_user is not None and authenticated_user == user.name:
+                    account = g.get_user(user.name)
+                    _report_statuses_under(f'{user_repos_path}/{_private_subpath}')
+                    _report_statuses_under(f'{user_gists_path}/{_private_subpath}')
+                    for starred_repo in os.scandir(f'{user_repos_path}/{_starred_subpath}'):
+                        _report_statuses_under(starred_repo.path)
+                    for starred_gist in os.scandir(f'{user_gists_path}/{_starred_subpath}'):
+                        _report_statuses_under(starred_gist.path)
+        elif account_type.name == _organization:
+            for org in os.scandir(f'{base_path}/{_organization}'):
+                if org.name == '.DS_Store':
+                    continue
+                org_repos_path = f'{org.path}/{_repos_subpath}'
+                org_gists_path = f'{org.path}/{_gists_subpath}'
+                _report_statuses_under(f'{org_repos_path}/{_public_subpath}')
+                _report_statuses_under(f'{org_gists_path}/{_public_subpath}')
+                for forked_repo in os.scandir(f'{org_repos_path}/{_forked_subpath}'):
+                    _report_statuses_under(forked_repo.path)
+                _report_statuses_under(f'{org_repos_path}/{_private_subpath}')
+                _report_statuses_under(f'{org_gists_path}/{_private_subpath}')
+        else:
+            print(f'unexpected account type directory: {account_type}; expected either `{_user}` or `{_organization}`')
+
+@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced.')
+@arg('base_path', help='Location of the repos to sync.')
+@arg('--push_to_fork_remotes', help='After fast-forwarding any new commits from forks\' remote upstreams, push the new commits to fork remotes.', default=False)
+@arg('--prune', help='If a local repository is no longer listed from the server, remove its local clone.')
+@arg('--pull_with_rebase', help='Run `git pull --rebase` to rebase any local commits on top of the remote HEAD. (By default, `sync` runs `git pull --ff-only`.)', default=False)
+@arg('--push_to_remotes', help='If --pull_with_rebase is provided, push HEAD to remote after rebasing any local commits on top of pulled remote commits.', default=False)
+@arg('--rebase_submodules', help='If development has occurred in a submodule, the changes are rebased onto any updated submodule commit hash that is pulled down as part of updating the superproject. See `man git-submodule` -> update -> rebase.)')
+def sync(access_token, base_path, push_to_fork_remotes=False, prune=False, pull_with_rebase=False, push_to_remotes=False, rebase_submodules=False):
+    'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Forks pull from `fork` remote first, then try to rebase HEAD on top of any new `upstream` remote commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private and starred repos/gists should be synced, using their access tokens in turn.'
     g = Github(access_token)
     authenticated_user = g.get_user()
     for account_type in os.scandir(base_path):
@@ -142,7 +207,7 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
                 remote_gists = account.get_gists()
                 user_repos_path = f'{user_dir}/{user.name}/{_repos_subpath}'
                 user_gists_path = f'{user_dir}/{user.name}/{_gists_subpath}'
-                _update_local_repos_under(f'{user_repos_path}/{_public_subpath}', remote_repos, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, public=True)
+                _report_statuses_under(f'{user_repos_path}/{_public_subpath}', remote_repos, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, public=True)
                 _update_local_repos_under(f'{user_gists_path}/{_public_subpath}', remote_gists, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, public=True, gist=True)
                 for forked_repo in os.scandir(f'{user_repos_path}/{_forked_subpath}'):
                     _update_local_repos_under(forked_repo.path, remote_repos, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, forked=True)
@@ -157,15 +222,6 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
                         _update_local_repos_under(starred_repo.path, remote_starred_repos, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, starred=True)
                     for starred_gist in os.scandir(f'{user_gists_path}/{_starred_subpath}'):
                         _update_local_repos_under(starred_gist.path, remote_starred_gists, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, gist=True, starred=True)
-@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced.')
-@arg('base_path', help='Location of the repos to sync.')
-@arg('--push_to_fork_remotes', help='After fast-forwarding any new commits from forks\' remote upstreams, push the new commits to fork remotes.', default=False)
-@arg('--prune', help='If a local repository is no longer listed from the server, remove its local clone.')
-@arg('--pull_with_rebase', help='Run `git pull --rebase` to rebase any local commits on top of the remote HEAD. (By default, `sync` runs `git pull --ff-only`.)', default=False)
-@arg('--push_to_remotes', help='If --pull_with_rebase is provided, push HEAD to remote after rebasing any local commits on top of pulled remote commits.', default=False)
-@arg('--rebase_submodules', help='If development has occurred in a submodule, the changes are rebased onto any updated submodule commit hash that is pulled down as part of updating the superproject. See `man git-submodule` -> update -> rebase.)')
-def sync(access_token, base_path, push_to_fork_remotes=False, prune=False, pull_with_rebase=False, push_to_remotes=False, rebase_submodules=False):
-    'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Forks pull from `fork` remote first, then try to rebase HEAD on top of any new `upstream` remote commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private and starred repos/gists should be synced, using their access tokens in turn.'
         elif account_type.name == _organization:
             for org in os.scandir(f'{base_path}/{_organization}'):
                 if org.name == '.DS_Store':
@@ -277,7 +333,7 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             _clone_repo(gist_ssh_url, f'{starred_gists_path}/{gist.owner.login}/{gist.description}')
 
 parser = argh.ArghParser()
-parser.add_commands([clone, sync])
+parser.add_commands([clone, sync, status])
 
 if __name__ == '__main__':
     parser.dispatch()
