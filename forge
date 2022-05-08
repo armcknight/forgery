@@ -127,15 +127,6 @@ def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prun
             print(f'pruning {repo.path}')
             shutil.rmtree(repo.path)
 
-@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
-@arg('base_path', help='Location of the repos to sync')
-@arg('--push_to_fork_remotes', help='After fast-forwarding any new commits from forks\' remote upstreams, push the new commits to fork remotes.', default=False)
-@arg('--prune', help='If a local repository is no longer listed from the server, remove its local clone.')
-@arg('--pull_with_rebase', help='Run `git pull --rebase` to rebase any local commits on top of the remote HEAD. (By default, `sync` runs `git pull --ff-only`.)', default=False)
-@arg('--push_to_remotes', help='If --pull_with_rebase is provided, push HEAD to remote after rebasing any local commits on top of pulled remote commits.', default=False)
-@arg('--rebase_submodules', help='If development has occurred in a submodule, the changes are rebased onto any updated submodule commit hash that is pulled down as part of updating the superproject. See `man git-submodule` -> update -> rebase.)')
-def sync(access_token, base_path, push_to_fork_remotes=False, prune=False, pull_with_rebase=False, push_to_remotes=False, rebase_submodules=False):
-    'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Forks pull from `fork` remote first, then try to rebase HEAD on top of any new `upstream` remote commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private and starred repos/gists should be synced, using their access tokens in turn.'
     g = Github(access_token)
     authenticated_user = g.get_user()
     for account_type in os.scandir(base_path):
@@ -166,6 +157,15 @@ def sync(access_token, base_path, push_to_fork_remotes=False, prune=False, pull_
                         _update_local_repos_under(starred_repo.path, remote_starred_repos, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, starred=True)
                     for starred_gist in os.scandir(f'{user_gists_path}/{_starred_subpath}'):
                         _update_local_repos_under(starred_gist.path, remote_starred_gists, push_to_fork_remotes, pull_with_rebase, push_after_rebase, prune, rebase_submodules, gist=True, starred=True)
+@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced.')
+@arg('base_path', help='Location of the repos to sync.')
+@arg('--push_to_fork_remotes', help='After fast-forwarding any new commits from forks\' remote upstreams, push the new commits to fork remotes.', default=False)
+@arg('--prune', help='If a local repository is no longer listed from the server, remove its local clone.')
+@arg('--pull_with_rebase', help='Run `git pull --rebase` to rebase any local commits on top of the remote HEAD. (By default, `sync` runs `git pull --ff-only`.)', default=False)
+@arg('--push_to_remotes', help='If --pull_with_rebase is provided, push HEAD to remote after rebasing any local commits on top of pulled remote commits.', default=False)
+@arg('--rebase_submodules', help='If development has occurred in a submodule, the changes are rebased onto any updated submodule commit hash that is pulled down as part of updating the superproject. See `man git-submodule` -> update -> rebase.)')
+def sync(access_token, base_path, push_to_fork_remotes=False, prune=False, pull_with_rebase=False, push_to_remotes=False, rebase_submodules=False):
+    'Sync repos that have been previously cloned for all local users and organizations, by fetching and fast-forwarding to pick up any new commits. Forks pull from `fork` remote first, then try to rebase HEAD on top of any new `upstream` remote commits. Update the tags associated with cloned repos, as those may change over time. Will only be able to work with private repos for the user authenticated with the provided access token; other users\' will only have public repos updated, so this will need to be run once for each user whose private and starred repos/gists should be synced, using their access tokens in turn.'
         elif account_type.name == _organization:
             for org in os.scandir(f'{base_path}/{_organization}'):
                 if org.name == '.DS_Store':
@@ -185,17 +185,17 @@ def sync(access_token, base_path, push_to_fork_remotes=False, prune=False, pull_
         else:
             print(f'unexpected account type directory: {account_type}; expected either `{_user}` or `{_organization}`')
 
-@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced')
-@arg('base_path', help='Location of the repos to sync')
-@arg('--no_public_repos', help='Do not clone the authenticated user\'s or organization\'s public repos', default=False)
-@arg('--no_private_repos', help='Do not clone the authenticated user\'s or organization\'s private repos', default=False)
-@arg('--no_starred_repos', help='Do not clone the authenticated user\'s or organization\'s starred repos (does not apply to organizations)', default=False)
-@arg('--no_forked_repos', help='Do not clone the authenticated user\'s or organization\'s forked repos', default=False)
-@arg('--no_public_gists', help='Do not clone the authenticated user\'s or organization\'s public gists', default=False)
-@arg('--no_private_gists', help='Do not clone the authenticated user\'s or organization\'s private gists', default=False)
-@arg('--no_starred_gists', help='Do not clone the authenticated user\'s starred gists (does not apply to organizations)', default=False)
-@arg('--no_forked_gists', help='Do not clone the authenticated user\'s forked gists (does not apply to organiations)', default=False)
-@arg('--no_wikis', help='Do not clone wikis associated with any repos that are cloned', default=False)
+@arg('access_token', help='The GitHub access token of the GitHub user whose repos should be synced.')
+@arg('base_path', help='Location of the repos to sync.')
+@arg('--no_public_repos', help='Do not clone the authenticated user\'s or organization\'s public repos.', default=False)
+@arg('--no_private_repos', help='Do not clone the authenticated user\'s or organization\'s private repos.', default=False)
+@arg('--no_starred_repos', help='Do not clone the authenticated user\'s or organization\'s starred repos (does not apply to organizations).', default=False)
+@arg('--no_forked_repos', help='Do not clone the authenticated user\'s or organization\'s forked repos.', default=False)
+@arg('--no_public_gists', help='Do not clone the authenticated user\'s or organization\'s public gists.', default=False)
+@arg('--no_private_gists', help='Do not clone the authenticated user\'s or organization\'s private gists.', default=False)
+@arg('--no_starred_gists', help='Do not clone the authenticated user\'s starred gists (does not apply to organizations).', default=False)
+@arg('--no_forked_gists', help='Do not clone the authenticated user\'s forked gists (does not apply to organiations).', default=False)
+@arg('--no_wikis', help='Do not clone wikis associated with any repos that are cloned.', default=False)
 @arg('--no_repos', help='Do not clone any repos.', default=False)
 @arg('--no_gists', help='Do not clone any gists.', default=False)
 @arg('--organization', help='Instead of fetching the list of the authenticated user\'s repos, fetch the specified organzation\'s. This means there will be no starred repos/gists.', default=None, type=str)
