@@ -99,7 +99,7 @@ def _is_kind_of_repo_to_sync(x, gist, repo, public, private, forked, starred):
         )
 
 def _update_local_repos_under(path, remote_repo_list, push_to_fork_remotes, prune, pull_with_rebase, push_after_rebase, rebase_submodules, public=False, private=False, forked=False, gist=False, starred=False):
-    'Given a path to a local repo and list of remote repositories, fetch and fast-forward commits from upstream. If it\'s a fork, pull (--ff-only or --rebase) from `fork` remote and then always pull --rebase from `upstream`, then optionally push to the remote downstream fork. If the local repo is no longer in the list of remote repos, optionally prune it by deleting the local clone.'
+    'Given a path to a directory containing a collection of any type of locally cloned repos, and list of remote repositories, fetch and fast-forward commits from upstream. If it\'s a fork, pull (--ff-only or --rebase) from `fork` remote and then always pull --rebase from `upstream`, then optionally push to the remote downstream fork. If the local repo is no longer in the list of remote repos, optionally prune it by deleting the local clone.'
     if not os.path.exists(path):
         return
     for repo in os.scandir(path):
