@@ -333,7 +333,7 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             _clone_repo(gist_ssh_url, f'{starred_gists_path}/{gist.owner.login}/{gist.description}')
 
 parser = argh.ArghParser()
-parser.add_commands([clone, sync, status])
+parser.add_commands([clone, status, sync])
 
 if __name__ == '__main__':
     parser.dispatch()
