@@ -69,3 +69,8 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - [x] update submodules recursivey, with an option to rebase them in `sync`
 - [x] add a `status` command to report current status of all managed repos
 - [x] add option to `clone` to avoid pulling down any repo that also belongs to an organization, if not running with `--organization`; the default behavior does clone those, and if organization is used afterwards, there would be multiple copies of the same repo
+- [ ] support more VCS options
+    - [ ] `hg`
+    - [ ] `svn`
+    - [ ] `fossil`
+- [ ] allow providing a comma-delimited list to the `--organization` option
