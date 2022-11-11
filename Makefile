@@ -1,4 +1,4 @@
 .PHONY: init
 init:
-	pip3 install PyGithub argh
 	brew bundle
+	pip3 install PyGithub argh
