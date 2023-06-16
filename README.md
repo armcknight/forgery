@@ -75,3 +75,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
     - [ ] `svn`
     - [ ] `fossil`
 - [ ] allow providing a comma-delimited list to the `--organization` option
+- [ ] add a search function that progressively searches by the following tiers:
+    - repo name
+    - file name
+    - source code
