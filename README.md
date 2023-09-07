@@ -79,3 +79,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
     - repo name
     - file name
     - source code
+
+## Alternatives
+
+- https://github.com/jasonraimondi/deno-mirror-to-gitea
