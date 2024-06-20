@@ -79,6 +79,8 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
     - repo name
     - file name
     - source code
+- [ ] add option `--no-archives` to avoid cloning archived repos (not sure if gists can be archived-check that out)
+- [ ] add dual options for all the `--no-...` flags that are `--only-...` (so, `--only-repos` to complement `--no-repos`)
 
 ## Alternatives
 
