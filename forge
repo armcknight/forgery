@@ -278,6 +278,7 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
             subprocess.check_call(['mkdir', '-p', star_path])
         for repo in repos:
             if repo.organization is not None and organization is None and dedupe_org_repos_owned_by_user:
+                # the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it has any org ownership and we're cloning user repos
                 continue
             if repo.fork:
                 if no_forked_repos:
