@@ -270,12 +270,17 @@ def clone(access_token, base_path, no_public_repos=False, no_private_repos=False
     if not no_repos:
         repos_path = f'{base_path}/{account_type}/{account.login}/{_repos_subpath}'
         fork_path = f'{repos_path}/{_forked_subpath}'
+        if not no_forked_repos:
+            subprocess.check_call(['mkdir', '-p', fork_path])
         star_path = f'{repos_path}/{_starred_subpath}'
-        public_path = f'{repos_path}/{_public_subpath}'
-        private_path = f'{repos_path}/{_private_subpath}'
-        subprocess.check_call(['mkdir', '-p', fork_path, public_path, private_path])
-        if organization is None and not no_starred_repos:
+        if organzation is None and  not no_starred_repos:
             subprocess.check_call(['mkdir', '-p', star_path])
+        public_path = f'{repos_path}/{_public_subpath}'
+        if not no_public_repos:
+            subprocess.check_call(['mkdir', '-p', public_path])
+        private_path = f'{repos_path}/{_private_subpath}'
+        if not no_private_repos:
+            subprocess.check_call(['mkdir', '-p', private_path])
         for repo in repos:
             if repo.organization is not None and organization is None and dedupe_org_repos_owned_by_user:
                 # the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it has any org ownership and we're cloning user repos
