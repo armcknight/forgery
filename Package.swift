@@ -5,15 +5,20 @@ import PackageDescription
 
 let package = Package(
     name: "forgery",
+    platforms: [
+        .macOS(.v12),
+    ],
     products: [
         .executable(
             name: "forgery",
-            targets: ["forgery"]),
+            targets: ["forgery"]
+        ),
     ],
     dependencies: [
         .package(name: "OctoKit", path: "octokit"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.0.0"),
         .package(name: "git-kit", path: "git-kit"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -22,7 +27,9 @@ let package = Package(
                 .product(name: "OctoKit", package: "OctoKit"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "GitKit", package: "git-kit"),
-            ]),
+                .product(name: "Logging", package: "swift-log"),
+            ]
+        ),
         .testTarget(
             name: "forgeryTests",
             dependencies: ["forgery"]),
