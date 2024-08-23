@@ -2,3 +2,8 @@
 # -*- mode: gitignore; -*-
 \#*\#
 *~
+
+Brewfile.lock.json
+.build/
+.swiftpm/
+Package.resolved
