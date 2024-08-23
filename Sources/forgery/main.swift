@@ -361,8 +361,8 @@ struct Clone: ParsableCommand {
     @Option(help: "Instead of fetching the list of the authenticated user's repos, fetch the specified organization's.")
     var organization: String?
 
-    @Flag(help: "If a user created a repo also owned by an organization, avoid cloning any repos owned by an organization from being cloned for a user.")
-    var dedupeOrgReposOwnedByUser: Bool = false
+    @Flag(help: "When cloning repos for a user, don't clone repos created by a user by owned by an organization.")
+    var dedupeOrgReposCreatedByUser: Bool = false
 
     func run() throws {
         let config = TokenConfiguration(accessToken)
@@ -460,7 +460,8 @@ struct Clone: ParsableCommand {
                             switch response {
                             case .success(let repos):
                                 for repo in repos {
-                                    if repo.organization != nil && organization == nil && dedupeOrgReposOwnedByUser {
+                                    if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
+                                        // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it has any org ownership and we're cloning user repos
                                         continue
                                     }
                                     if repo.isFork {
