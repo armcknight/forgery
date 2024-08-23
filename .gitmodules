@@ -1,0 +1,6 @@
+[submodule "octokit"]
+	path = octokit
+	url = git@github.com:armcknight/octokit.swift
+[submodule "git-kit"]
+	path = git-kit
+	url = git@github.com:armcknight/git-kit
