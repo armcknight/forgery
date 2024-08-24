@@ -25,13 +25,25 @@ public var logger = Logger(label: "forgery")
 func cloneRepo(sshURL: String, clonePath: String) -> Bool {
     if !FileManager.default.fileExists(atPath: clonePath) {
         logger.info("Cloning \(sshURL)...")
-        let _ = shell("git clone \(sshURL) \(clonePath)")
-        let _ = shell("git submodule update --init --recursive", workingDirectory: clonePath)
-        return true
+        let git = Git(path: clonePath)
+        do {
+            try git.run(.clone(url: sshURL))
+        } catch {
+            logger.error("Failed to clone \(sshURL): \(error)")
+            return false
+        }
+        do {
+            try git.run(.submoduleUpdate(init: true, recursive: true))
+        } catch {
+            logger.error("Failed to retrieve submodules under \(sshURL): \(error)")
+            return false
+        }
     } else {
         logger.info("\(sshURL) already cloned")
         return false
     }
+    
+    return true
 }
 
 func remoteRepoExists(repoSSHURL: String) -> Bool {
@@ -54,7 +66,11 @@ func cloneWiki(repo: Repository, clonePath: String) {
             let wikiPath = "\(clonePath).wiki"
             if !FileManager.default.fileExists(atPath: wikiPath) {
                 logger.info("Cloning \(wikiURL)...")
-                let _ = shell("git clone \(wikiURL) \(wikiPath)")
+                do {
+                    try Git(path: wikiPath).run(.clone(url: wikiURL))
+                } catch {
+                    logger.error("Failed to clone wiki at \(wikiURL): \(error)")
+                }
             } else {
                 logger.info("\(wikiURL) already cloned")
             }
@@ -62,6 +78,7 @@ func cloneWiki(repo: Repository, clonePath: String) {
     }
 }
 
+/// Use the https://github.com/jdberry/tag/ tool to add macOS tags to the directory containing the repo.
 func tagRepo(repo: Repository, clonePath: String, clearFirst: Bool = false) {
     switch getRepositoryTopics(owner: repo.owner.name!, repo: repo.name!) {
     case .success(let tagList):
@@ -322,7 +339,7 @@ struct Clone: ParsableCommand {
     @Argument(help: "The GitHub access token of the GitHub user whose repos should be synced.")
     var accessToken: String
 
-    @Argument(help: "Location of the repos to sync.")
+    @Argument(help: "Local location to work with repos.")
     var basePath: String
 
     @Flag(help: "Do not clone the authenticated user's or organization's public repos.")
@@ -364,6 +381,12 @@ struct Clone: ParsableCommand {
     @Flag(help: "When cloning repos for a user, don't clone repos created by a user by owned by an organization.")
     var dedupeOrgReposCreatedByUser: Bool = false
 
+    fileprivate func setDefaultBranch(_ git: Git) throws {
+        let defaultBranch = try git.run(.revParse(abbrevRef: "fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
+        try git.run(.config(name: "branch.\(defaultBranch).remote", value: "upstream"))
+        try git.run(.config(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
+    }
+    
     func run() throws {
         let config = TokenConfiguration(accessToken)
         let client = Octokit(config)
@@ -377,14 +400,19 @@ struct Clone: ParsableCommand {
                     let publicPath = "\(orgReposPath)/\(publicSubpath)"
                     let privatePath = "\(orgReposPath)/\(privateSubpath)"
                     
-                    if !noForkedRepos {
-                        try? FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
-                    }
-                    if !noPublicRepos {
-                        try? FileManager.default.createDirectory(atPath: publicPath, withIntermediateDirectories: true, attributes: nil)
-                    }
-                    if !noPrivateRepos {
-                        try? FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
+                    do {
+                        if !noForkedRepos {
+                            try FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
+                        }
+                        if !noPublicRepos {
+                            try FileManager.default.createDirectory(atPath: publicPath, withIntermediateDirectories: true, attributes: nil)
+                        }
+                        if !noPrivateRepos {
+                            try FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
+                        }
+                    } catch {
+                        logger.error("Failed to create a required directory: \(error)")
+                        return
                     }
                     
                     client.repositories(owner: org.login) { response in
@@ -401,9 +429,7 @@ struct Clone: ParsableCommand {
                                             let parentRepo = repo.parent
                                             if remoteRepoExists(repoSSHURL: parentRepo!.sshURL!) {
                                                 try git.run(.addRemote(name: "upstream", url: parentRepo!.sshURL!))
-                                                let defaultBranch = try git.run(.raw("git rev-parse --abbrev-ref fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
-                                                try git.run(.config(name: "branch.\(defaultBranch).remote", value: "upstream"))
-                                                try git.run(.config(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
+                                                try setDefaultBranch(git)
                                                 tagRepo(repo: parentRepo!, clonePath: clonePath)
                                                 if !noWikis {
                                                     cloneWiki(repo: parentRepo!, clonePath: clonePath)
@@ -443,17 +469,22 @@ struct Clone: ParsableCommand {
                         let privatePath = "\(userReposPath)/\(privateSubpath)"
                         let starredPath = "\(userReposPath)/\(starredSubpath)"
                         
-                        if !noForkedRepos {
-                            try? FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
-                        }
-                        if !noPublicRepos {
-                            try? FileManager.default.createDirectory(atPath: publicPath, withIntermediateDirectories: true, attributes: nil)
-                        }
-                        if !noPrivateRepos {
-                            try? FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
-                        }
-                        if !noStarredRepos {
-                            try? FileManager.default.createDirectory(atPath: starredPath, withIntermediateDirectories: true, attributes: nil)
+                        do {
+                            if !noForkedRepos {
+                                try FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
+                            }
+                            if !noPublicRepos {
+                                try FileManager.default.createDirectory(atPath: publicPath, withIntermediateDirectories: true, attributes: nil)
+                            }
+                            if !noPrivateRepos {
+                                try FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
+                            }
+                            if !noStarredRepos {
+                                try FileManager.default.createDirectory(atPath: starredPath, withIntermediateDirectories: true, attributes: nil)
+                            }
+                        } catch {
+                            logger.error("Failed to create a required directory: \(error)")
+                            return
                         }
                         
                         client.repositories(owner: user.login) { response in
@@ -474,9 +505,7 @@ struct Clone: ParsableCommand {
                                                 try git.run(.renameRemote(oldName: "origin", newName: "fork"))
                                                 if remoteRepoExists(repoSSHURL: parentRepo!.sshURL!) {
                                                     try git.run(.addRemote(name: "upstream", url: parentRepo!.sshURL!))
-                                                    let defaultBranch = try git.run(.raw("git rev-parse --abbrev-ref fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
-                                                    try git.run(.config(name: "branch.\(defaultBranch).remote", value: "upstream"))
-                                                    try git.run(.config(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
+                                                    try setDefaultBranch(git)
                                                     tagRepo(repo: parentRepo!, clonePath: clonePath)
                                                     if !noWikis {
                                                         cloneWiki(repo: parentRepo!, clonePath: clonePath)
