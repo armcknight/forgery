@@ -63,18 +63,27 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - [ ] collect and print errors instead of failing out of the script
 - [x] pull with rebase to replay current local topic branch commits onto latest upstream default branch, stashing uncommitted changes
 - [x] forks fetch/fast-forward from `fork` remote first, then pull with rebase from `upstream`, then optionally push that back up to `fork` (how to handle conflicts?)
-- [ ] move repos/gists between public/private directories in case those permissions are switched by the upstream owner
-- [ ] move repos that have been transferred to new owners
+- actions to take when `sync`ing
+    - [ ] move repos/gists between public/private directories in case those permissions are switched by the upstream owner
+    - [ ] move repos that have been transferred to new owners
 - [ ] add option to create a cron job from the current invocation
-- [ ] allow listing multiple organizations
-- [x] update submodules recursivey, with an option to rebase them in `sync`
+- enhancements for cloning org repos
+    - [ ] allow listing multiple organizations
+    - [ ] option to `clone` all repos of all organizations followed by the authenticated user
+- submodules
+    - [x] update submodules recursively, with an option to rebase them in `sync`
+    - [ ] check out branches `fork_main` and `upstream_main` and delete local `main` branch
+    - [ ] check if submodules are forks, and treat them thusly (check github api `repo.is_fork`)
 - [x] add a `status` command to report current status of all managed repos
 - [x] add option to `clone` to avoid pulling down any repo that also belongs to an organization, if not running with `--organization`; the default behavior does clone those, and if organization is used afterwards, there would be multiple copies of the same repo
 - [ ] support more VCS options
     - [ ] `hg`
     - [ ] `svn`
     - [ ] `fossil`
-- [ ] allow providing a comma-delimited list to the `--organization` option
+- add more forges
+    - [ ] gitlab
+    - [ ] codeberg
+    - [ ] sourceforge
 - [ ] add a search function that progressively searches by the following tiers:
     - repo name
     - file name
