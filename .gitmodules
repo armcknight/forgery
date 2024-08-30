@@ -4,3 +4,6 @@
 [submodule "git-kit"]
 	path = git-kit
 	url = git@github.com:armcknight/git-kit
+[submodule "RequestKit"]
+	path = RequestKit
+	url = git@github.com:armcknight/RequestKit.git
