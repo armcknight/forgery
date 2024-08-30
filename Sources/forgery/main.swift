@@ -22,21 +22,25 @@ let urlSession = URLSession(configuration: .default)
 
 public var logger = Logger(label: "forgery")
 
-func cloneRepo(sshURL: String, clonePath: String) -> Bool {
-    if !FileManager.default.fileExists(atPath: clonePath) {
+func cloneRepo(repoName: String, sshURL: String, clonePath: String) -> Bool {
+    let repoPath = "\(clonePath)/\(repoName)"
+    if !FileManager.default.fileExists(atPath: repoPath) {
         logger.info("Cloning \(sshURL)...")
-        let git = Git(path: clonePath)
+        var git = Git(path: clonePath)
         do {
             try git.run(.clone(url: sshURL))
         } catch {
             logger.error("Failed to clone \(sshURL): \(error)")
             return false
         }
-        do {
-            try git.run(.submoduleUpdate(init: true, recursive: true))
-        } catch {
-            logger.error("Failed to retrieve submodules under \(sshURL): \(error)")
-            return false
+        if FileManager.default.fileExists(atPath: "\(repoPath)/.gitmodules") {
+            git = Git(path: repoPath)
+            do {
+                try git.run(.submoduleUpdate(init: true, recursive: true))
+            } catch {
+                logger.error("Failed to retrieve submodules under \(sshURL): \(error)")
+                return false
+            }
         }
     } else {
         logger.info("\(sshURL) already cloned")
