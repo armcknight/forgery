@@ -25,16 +25,15 @@ struct Sync: ParsableCommand {
     var rebaseSubmodules: Bool = false
 
     func run() throws {
-        let config = TokenConfiguration(accessToken)
-        let client = Octokit(config)
+        let githubClient = GitHub(accessToken: accessToken)
         
-        switch synchronouslyAuthenticateUser(client: client, name: user) {
+        switch githubClient.synchronouslyAuthenticateUser(name: user) {
         case .success(let user):
             let userDir = "\(basePath)/\(user.login!)"
             Task {
                 do {
-                    let remoteRepos = try await client.repositories(owner: user.login).map { $0 }
-                    updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
+                    let remoteRepos = try await githubClient.client.repositories(owner: user.login).map { $0 }
+                    githubClient.updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
                 } catch {
                     logger.error("Error fetching repositories: \(error)")
                 }

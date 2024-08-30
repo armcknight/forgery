@@ -1,6 +1,12 @@
 import Foundation
 import GitKit
 
+func setDefaultBranch(_ git: Git) throws {
+    let defaultBranch = try git.run(.revParse(abbrevRef: "fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
+    try git.run(.config(name: "branch.\(defaultBranch).remote", value: "upstream"))
+    try git.run(.config(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
+}
+
 func cloneRepo(repoName: String, sshURL: String, clonePath: String) -> Bool {
     let repoPath = "\(clonePath)/\(repoName)"
     if !FileManager.default.fileExists(atPath: repoPath) {
