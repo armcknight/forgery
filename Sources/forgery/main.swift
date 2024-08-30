@@ -280,6 +280,7 @@ func updateLocalReposUnder(path: String, remoteRepoList: [Repository], pushToFor
 func synchronouslyAuthenticate(client: Octokit) -> Result<User, Error> {
     var result: Result<User, Error>?
     let group = DispatchGroup()
+    group.enter()
     client.me {
         result = $0
         group.leave()
@@ -296,6 +297,7 @@ func synchronouslyAuthenticate(client: Octokit) -> Result<User, Error> {
 func synchronouslyAuthenticateUser(client: Octokit, name: String) -> Result<User, Error> {
     var result: Result<User, Error>?
     let group = DispatchGroup()
+    group.enter()
     client.user(name: user) {
         result = $0
         group.leave()
@@ -312,7 +314,25 @@ func synchronouslyAuthenticateUser(client: Octokit, name: String) -> Result<User
 func synchronouslyFetchRepositories(client: Octokit, owner: String) -> Result<[Repository], Error> {
     var result: Result<[Repository], Error>?
     let group = DispatchGroup()
+    group.enter()
     client.repositories(owner: owner) {
+        result = $0
+        group.leave()
+    }
+    group.wait()
+    
+    guard let result else {
+        return .failure(RequestError.resultError)
+    }
+    
+    return result
+}
+
+func synchronouslyReadRepository(client: Octokit, owner: String, repoName: String) -> Result<Repository, Error> {
+    var result: Result<Repository, Error>?
+    let group = DispatchGroup()
+    group.enter()
+    client.repository(owner: owner, name: repoName) {
         result = $0
         group.leave()
     }
@@ -328,7 +348,8 @@ func synchronouslyFetchRepositories(client: Octokit, owner: String) -> Result<[R
 func synchronouslyFetchStarredRepositories(client: Octokit, owner: String) -> Result<[Repository], Error> {
     var result: Result<[Repository], Error>?
     let group = DispatchGroup()
-    client.starredRepositories(owner: owner) {
+    group.enter()
+    client.stars(name: owner) {
         result = $0
         group.leave()
     }
@@ -459,6 +480,48 @@ struct Clone: ParsableCommand {
         try git.run(.config(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
     }
     
+    fileprivate func cloneStarredRepositories(_ client: Octokit, _ owner: String, _ starredPath: String) {
+        switch synchronouslyFetchStarredRepositories(client: client, owner: owner) {
+        case .success(let repos):
+            for repo in repos {
+                guard let owner = repo.owner.login else {
+                    logger.error("No owner info returned for starred repo with id \(repo.id).")
+                    continue
+                }
+                cloneNonForkedRepo(repo: repo, repoTypePath: "\(starredPath)/\(owner)", noWikis: noWikis, accessToken: accessToken)
+            }
+        case .failure(let error):
+            logger.error("Error fetching starred repositories: \(error)")
+        }
+    }
+    
+    fileprivate func cloneRepositories(_ client: Octokit, _ owner: String, _ forkPath: String, _ privatePath: String, _ publicPath: String) {
+        switch synchronouslyFetchRepositories(client: client, owner: owner) {
+        case .success(let repos):
+            logger.info("Retrieved list of repos to clone (\(repos.count) total).")
+            for repo in repos {
+                if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
+                    // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it has any org ownership and we're cloning user repos
+                    continue
+                }
+                if repo.isFork {
+                    if noForkedRepos { continue }
+                    cloneForkedRepo(client: client, repo: repo, forkPath: forkPath)
+                } else {
+                    if repo.isPrivate {
+                        if noPrivateRepos { continue }
+                        cloneNonForkedRepo(repo: repo, repoTypePath: privatePath, noWikis: noWikis, accessToken: accessToken)
+                    } else {
+                        if noPublicRepos { continue }
+                        cloneNonForkedRepo(repo: repo, repoTypePath: publicPath, noWikis: noWikis, accessToken: accessToken)
+                    }
+                }
+            }
+        case .failure(let error):
+            logger.error("Error authenticating user: \(error)")
+        }
+    }
+    
     func run() throws {
         logger.info("Starting clone...")
         let config = TokenConfiguration(accessToken)
@@ -500,8 +563,8 @@ struct Clone: ParsableCommand {
                                 logger.error("No name provided for repo with id \(repo.id).")
                                 continue
                             }
-                            let clonePath = "\(forkPath)/\(owner)/\(repoName)"
-                            if cloneRepo(sshURL: repo.sshURL!, clonePath: clonePath) {
+                            let clonePath = "\(forkPath)/\(owner)"
+                            if cloneRepo(repoName: repoName, sshURL: repo.sshURL!, clonePath: clonePath) {
                                 do {
                                     let git = Git(path: clonePath)
                                     try git.run(.renameRemote(oldName: "origin", newName: "fork"))
@@ -509,9 +572,10 @@ struct Clone: ParsableCommand {
                                     if remoteRepoExists(repoSSHURL: parentRepo!.sshURL!) {
                                         try git.run(.addRemote(name: "upstream", url: parentRepo!.sshURL!))
                                         try setDefaultBranch(git)
-                                        tagRepo(repo: parentRepo!, clonePath: clonePath)
+                                        let repoPath = "\(clonePath)/\(repoName)"
+                                        tagRepo(repo: parentRepo!, clonePath: repoPath)
                                         if !noWikis {
-                                            cloneWiki(repo: parentRepo!, clonePath: clonePath)
+                                            cloneWiki(repo: parentRepo!, clonePath: repoPath)
                                         }
                                     }
                                 } catch {
@@ -538,7 +602,11 @@ struct Clone: ParsableCommand {
             logger.info("Cloning for user...")
             switch synchronouslyAuthenticate(client: client) {
             case .success(let user):
-                let userReposPath = "\(basePath)/\(user)/\(reposSubpath)"
+                guard let userName = user.login else {
+                    logger.error("No user name returned.")
+                    return
+                }
+                let userReposPath = "\(basePath)/\(userName)/\(reposSubpath)"
                 let forkPath = "\(userReposPath)/\(forkedSubpath)"
                 let publicPath = "\(userReposPath)/\(publicSubpath)"
                 let privatePath = "\(userReposPath)/\(privateSubpath)"
@@ -567,82 +635,69 @@ struct Clone: ParsableCommand {
                     return
                 }
                 logger.info("Fetching repositories owned by \(owner).")
-                switch synchronouslyFetchRepositories(client: client, owner: owner) {
-                case .success(let repos):
-                    logger.info("Retrieved list of repos to clone (\(repos.count) total).")
-                    for repo in repos {
-                        if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
-                            // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it has any org ownership and we're cloning user repos
-                            continue
-                        }
-                        if repo.isFork {
-                            if noForkedRepos { continue }
-                            guard let parentRepo = repo.parent else {
-                                logger.error("No parent repo information provided for repo with id \(repo.id).")
-                                continue
-                            }
-                            guard let repoName = repo.name else {
-                                logger.error("No name provided for forked repo with id \(repo.id).")
-                                continue
-                            }
-                            guard let parentOwner = parentRepo.owner.login else {
-                                logger.error("No owner info returned for parent repo with id \(parentRepo.id).")
-                                continue
-                            }
-                            let clonePath = "\(forkPath)/\(parentOwner)/\(repoName)"
-                            if cloneRepo(sshURL: repo.sshURL!, clonePath: clonePath) {
-                                do {
-                                    let git = Git(path: clonePath)
-                                    try git.run(.renameRemote(oldName: "origin", newName: "fork"))
-                                    guard let parentURL = parentRepo.sshURL else {
-                                        logger.error("No SSH URL provided for parent repo with id \(parentRepo.id).")
-                                        return
-                                    }
-                                    guard remoteRepoExists(repoSSHURL: parentURL) else {
-                                        logger.error("Could not verify existence of remote parent repo at \(parentURL).")
-                                        return
-                                    }
-                                    try git.run(.addRemote(name: "upstream", url: parentURL))
-                                    try setDefaultBranch(git)
-                                    tagRepo(repo: parentRepo, clonePath: clonePath)
-                                    if !noWikis {
-                                        cloneWiki(repo: parentRepo, clonePath: clonePath)
-                                    }
-                                } catch {
-                                    logger.error("Error handling forked repo: \(error)")
-                                }
-                            }
-                        } else {
-                            if repo.isPrivate {
-                                if noPrivateRepos { continue }
-                                cloneNonForkedRepo(repo: repo, repoTypePath: privatePath, noWikis: noWikis, accessToken: accessToken)
-                            } else {
-                                if noPublicRepos { continue }
-                                cloneNonForkedRepo(repo: repo, repoTypePath: publicPath, noWikis: noWikis, accessToken: accessToken)
-                            }
-                        }
-                    }
-                    
-                    if !noStarredRepos {
-                        switch synchronouslyFetchStarredRepositories(client: client, owner: owner) {
-                        case .success(let repos):
-                            for repo in repos {
-                                guard let owner = repo.owner.login else {
-                                    logger.error("No owner info returned for starred repo with id \(repo.id).")
-                                    continue
-                                }
-                                cloneNonForkedRepo(repo: repo, repoTypePath: "\(starredPath)/\(owner)", noWikis: noWikis, accessToken: accessToken)
-                            }
-                        case .failure(let error):
-                            logger.error("Error fetching starred repositories: \(error)")
-                        }
-                    }
-                case .failure(let error):
-                    logger.error("Error authenticating user: \(error)")
+                cloneRepositories(client, owner, forkPath, privatePath, publicPath)
+                
+                if !noStarredRepos {
+                    cloneStarredRepositories(client, owner, starredPath)
                 }
             case .failure(let error):
                 logger.error("Error fetching repositories: \(error)")
             }
+        }
+    }
+    
+    func cloneForkedRepo(client: Octokit, repo: Repository, forkPath: String) {
+        guard let owner = repo.owner.login else {
+            logger.error("No owner login available for forked repo.")
+            return
+        }
+        guard let repoName = repo.name else {
+            logger.error("No name available for forked repo.")
+            return
+        }
+        switch synchronouslyReadRepository(client: client, owner: owner, repoName: repoName) {
+        case .failure(let error): logger.error("Failed to fetch details for forked repo \(owner)/\(repoName): \(error).")
+        case .success(let repo):
+            guard let parentRepo = repo.parent else {
+                logger.error("No parent repo information provided for forked repo \(owner)/\(repoName) (id \(repo.id)).")
+                return
+            }
+            guard let repoName = repo.name else {
+                logger.error("No name provided for forked repo \(owner)/\(repoName) (id \(repo.id)).")
+                return
+            }
+            guard let parentOwner = parentRepo.owner.login else {
+                logger.error("No owner info returned for parent of forked repo \(owner)/\(repoName) (id \(repo.id); parent id \(parentRepo.id).")
+                return
+            }
+            let clonePath = "\(forkPath)/\(parentOwner)"
+            if cloneRepo(repoName: repo.name!, sshURL: repo.sshURL!, clonePath: clonePath) {
+                do {
+                    let repoPath = "\(clonePath)/\(repoName)"
+                    let git = Git(path: repoPath)
+                    logger.info("Renaming origin to fork.")
+                    try git.run(.renameRemote(oldName: "origin", newName: "fork"))
+                    guard let parentURL = parentRepo.sshURL else {
+                        logger.error("No SSH URL provided for parent repo with id \(parentRepo.id).")
+                        return
+                    }
+                    guard remoteRepoExists(repoSSHURL: parentURL) else {
+                        logger.error("Could not verify existence of remote parent repo at \(parentURL).")
+                        return
+                    }
+                    logger.info("Adding upstream remote.")
+                    try git.run(.addRemote(name: "upstream", url: parentURL))
+                    logger.info("Setting default branch.")
+                    try setDefaultBranch(git)
+                    tagRepo(repo: parentRepo, clonePath: repoPath)
+                    if !noWikis {
+                        cloneWiki(repo: parentRepo, clonePath: repoPath)
+                    }
+                } catch {
+                    logger.error("Error handling forked repo: \(error)")
+                }
+            }
+
         }
     }
 }
