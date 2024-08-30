@@ -84,7 +84,15 @@ func cloneWiki(repo: Repository, clonePath: String) {
 
 /// Use the https://github.com/jdberry/tag/ tool to add macOS tags to the directory containing the repo.
 func tagRepo(repo: Repository, clonePath: String, clearFirst: Bool = false) {
-    switch getRepositoryTopics(owner: repo.owner.name!, repo: repo.name!) {
+    guard let owner = repo.owner.login else {
+        logger.error("Repo owner not available.")
+        return
+    }
+    guard let name = repo.name else {
+        logger.error("Repo name not available.")
+        return
+    }
+    switch getRepositoryTopics(owner: owner, repo: name) {
     case .success(let tagList):
         var mutableTopicList = [String](tagList)
         if let language = repo.language {
@@ -102,12 +110,19 @@ func tagRepo(repo: Repository, clonePath: String, clearFirst: Bool = false) {
 }
 
 func cloneNonForkedRepo(repo: Repository, repoTypePath: String, noWikis: Bool, accessToken: String) {
-    let clonePath = "\(repoTypePath)/\(repo.name!)"
-    if cloneRepo(sshURL: repo.sshURL!, clonePath: clonePath) {
-        tagRepo(repo: repo, clonePath: clonePath)
+    guard let name = repo.name else {
+        logger.error("No name provided for the repo (id \(repo.id)).")
+        return
+    }
+    guard let sshURL = repo.sshURL else {
+        logger.error("No SSH URL provided for \(name).");
+        return
+    }
+    if cloneRepo(repoName: name, sshURL: sshURL, clonePath: repoTypePath) {
+        tagRepo(repo: repo, clonePath: "\(repoTypePath)/\(name)")
     }
     if !noWikis {
-        cloneWiki(repo: repo, clonePath: clonePath)
+        cloneWiki(repo: repo, clonePath: repoTypePath)
     }
 }
 
