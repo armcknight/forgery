@@ -448,7 +448,7 @@ struct Clone: ParsableCommand {
         if let organization = organization {
             switch synchronouslyAuthenticateUser(client: client, name: organization) {
             case .success(let org):
-                let orgReposPath = "\(basePath)/\(organization)/\(organization)/\(reposSubpath)"
+                let orgReposPath = "\(basePath)/\(organization)/\(reposSubpath)"
                 let forkPath = "\(orgReposPath)/\(forkedSubpath)"
                 let publicPath = "\(orgReposPath)/\(publicSubpath)"
                 let privatePath = "\(orgReposPath)/\(privateSubpath)"
