@@ -4,9 +4,30 @@ Automatically clone and sync repositories from a forge such as GitHub to a macOS
 
 ## Getting started
 
-- Create an access token with repo scope from GitHub.
-- Run `make init`.
-- Run `./forge -h`.
+- Create the necessary access tokens.
+- Run `swift run forgery -h`.
+
+### Access tokens
+
+There are a couple of options for access tokens. You can create a classic token that can be used to access repos for a user or organization. Or, create separate fine-grained access tokens for a user and an organization, since the same fine-grained tokens exist per entity.
+
+> For organization access, you must go to your organization settings and allow access via user tokens. Then, follow the same steps below to create tokens.
+
+#### Fine grained tokens 
+
+Create an access token in GitHub's developer settings for "all repositories" with the following permissions set to read-only:
+    - repository 
+        - metadata
+    - account
+        - starring
+        
+#### Classic tokens
+
+Select the following scopes for all functionality, or pick and choose:
+- repo::public_repo
+- admin:org:::read:org
+- gist
+- user::read:user
 
 ## Commands
 
@@ -59,6 +80,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 
 ## TODO
 
+- [ ] add verbose mode for debug logging
 - [ ] generate a pretty report to display at the end of runs
 - [ ] collect and print errors instead of failing out of the script
 - [x] pull with rebase to replay current local topic branch commits onto latest upstream default branch, stashing uncommitted changes
@@ -66,7 +88,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - actions to take when `sync`ing
     - [ ] move repos/gists between public/private directories in case those permissions are switched by the upstream owner
     - [ ] move repos that have been transferred to new owners
-- [ ] add option to create a cron job from the current invocation
+- [ ] add option to create a cron job from the current invocation (take a cron schedule as parameter?)
 - enhancements for cloning org repos
     - [ ] allow listing multiple organizations
     - [ ] option to `clone` all repos of all organizations followed by the authenticated user
@@ -84,12 +106,16 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
     - [ ] gitlab
     - [ ] codeberg
     - [ ] sourceforge
+    - [ ] sourcehut
 - [ ] add a search function that progressively searches by the following tiers:
     - repo name
     - file name
     - source code
 - [ ] add option `--no-archives` to avoid cloning archived repos (not sure if gists can be archived-check that out)
 - [ ] add dual options for all the `--no-...` flags that are `--only-...` (so, `--only-repos` to complement `--no-repos`)
+- [ ] clone/sync other types of repos
+    - [ ] watched/subscribed repos
+- [ ] filter cloning by only including or excluding tag/topic
 
 ## Alternatives
 
