@@ -236,11 +236,10 @@ struct GitHub {
         var request = URLRequest(url: URL(string: url)!)
         request.httpMethod = "GET"
         request.addValue("application/vnd.github.mercy-preview+json", forHTTPHeaderField: "Accept")
-        let result: Result<Data, RequestError> = synchronouslyRequest(request: request)
+        let result: Result<[String: [String]], RequestError> = synchronouslyRequest(request: request)
         switch result {
-        case .success(let data):
-            guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                  let topics = json["names"] as? [String] else {
+        case .success(let dict):
+            guard let topics = dict["names"] else {
                 throw RequestError.noRepoTopics
             }
             logger.info("Topics: \(topics)")
