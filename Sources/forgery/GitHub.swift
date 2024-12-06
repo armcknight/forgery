@@ -243,14 +243,16 @@ struct GitHub {
         }
         group.wait()
         
+        guard let result else {
+            throw RequestError.resultError
+        }
+        
         switch result {
         case .success(let topics):
             logger.info("Topics: \(topics.names)")
             return topics.names
         case .failure(let error):
             logger.error("Topic fetch failed: \(error)")
-            throw RequestError.noRepoTopics
-        case .none:
             throw RequestError.noRepoTopics
         }
     }
