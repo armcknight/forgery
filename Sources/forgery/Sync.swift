@@ -27,19 +27,15 @@ struct Sync: ParsableCommand {
     func run() throws {
         let githubClient = GitHub(accessToken: accessToken)
         
-        switch githubClient.synchronouslyAuthenticateUser(name: user) {
-        case .success(let user):
-            let userDir = "\(basePath)/\(user.login!)"
-            Task {
-                do {
-                    let remoteRepos = try await githubClient.client.repositories(owner: user.login).map { $0 }
-                    githubClient.updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
-                } catch {
-                    logger.error("Error fetching repositories: \(error)")
-                }
+        let user = try githubClient.synchronouslyAuthenticateUser(name: user)
+        let userDir = "\(basePath)/\(user.login!)"
+        Task {
+            do {
+                let remoteRepos = try await githubClient.client.repositories(owner: user.login).map { $0 }
+                githubClient.updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
+            } catch {
+                logger.error("Error fetching repositories: \(error)")
             }
-        case .failure(let error):
-            logger.error("Error authenticating user: \(error)")
         }
     }
 }
