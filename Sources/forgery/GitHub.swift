@@ -42,7 +42,7 @@ struct GitHub {
             logger.error("Repo name not available.")
             return
         }
-        let tagList = try getRepositoryTopics(owner: owner, repo: name)
+        let tagList = try synchronouslyFetchRepositoryTopics(owner: owner, repo: name)
         var mutableTopicList = [String](tagList)
         if let language = repo.language {
             mutableTopicList.append(language.lowercased())
@@ -231,21 +231,27 @@ struct GitHub {
         }
     }
 
-    func getRepositoryTopics(owner: String, repo: String) throws -> [String] {
-        let url = "https://api.github.com/repos/\(owner)/\(repo)/topics"
-        var request = URLRequest(url: URL(string: url)!)
-        request.httpMethod = "GET"
-        request.addValue("application/vnd.github.mercy-preview+json", forHTTPHeaderField: "Accept")
-        let result: Result<[String: [String]], RequestError> = synchronouslyRequest(request: request)
+    func synchronouslyFetchRepositoryTopics(owner: String, repo: String) throws -> [String] {
+        var result: Result<Topics, Error>?
+        
+        let group = DispatchGroup()
+        group.enter()
+        
+        client.repositoryTopics(owner: owner, name: repo) {
+            result = $0
+            group.leave()
+        }
+        group.wait()
+        
         switch result {
-        case .success(let dict):
-            guard let topics = dict["names"] else {
-                throw RequestError.noRepoTopics
-            }
-            logger.info("Topics: \(topics)")
-            return topics
+        case .success(let topics):
+            logger.info("Topics: \(topics.names)")
+            return topics.names
         case .failure(let error):
-            throw error
+            logger.error("Topic fetch failed: \(error)")
+            throw RequestError.noRepoTopics
+        case .none:
+            throw RequestError.noRepoTopics
         }
     }
     
