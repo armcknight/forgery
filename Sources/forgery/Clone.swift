@@ -158,9 +158,9 @@ extension Clone {
     }
     
     mutating func cloneForOrganization(github: GitHub, organization: String) throws {
-        let org = try github.synchronouslyAuthenticateUser(name: organization)
+        let orgUser: User = try github.synchronouslyAuthenticateUser(name: organization)
         let orgPaths = try createOrgDirectories(org: organization)
-        guard let owner = org.login else {
+        guard let owner = orgUser.login else {
             logger.error("No user info returned for organization.")
             return
         }

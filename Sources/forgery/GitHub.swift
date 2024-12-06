@@ -155,7 +155,7 @@ struct GitHub {
         var result: Result<User, Error>?
         let group = DispatchGroup()
         group.enter()
-        client.user(name: user) {
+        client.user(name: name) {
             result = $0
             group.leave()
         }
