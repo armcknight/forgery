@@ -6,7 +6,6 @@ public enum RequestError: Error, CustomStringConvertible {
     case noData
     case invalidData
     case resultError
-    case noRepoTopics
     
     public var description: String {
         switch self {
@@ -15,7 +14,6 @@ public enum RequestError: Error, CustomStringConvertible {
         case .noData: return "Response contained no data."
         case .invalidData: return "Response data couldn't be decoded."
         case .resultError: return "The request completed successfully but a problem occurred returning the decoded response."
-        case .noRepoTopics: return "The request response did not contain a list of repository topics at the expected keypath."
         }
     }
 }

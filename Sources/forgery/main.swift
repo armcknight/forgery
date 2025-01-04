@@ -14,23 +14,48 @@ struct RepoTypes: OptionSet {
     
     static let noWikis = RepoTypes(rawValue: 1 << 3)
     static let noGists = RepoTypes(rawValue: 1 << 4)
+
+    static let noForkedGists = RepoTypes(rawValue: 1 << 5)
+    static let noPrivateGists = RepoTypes(rawValue: 1 << 6)
+    static let noPublicGists = RepoTypes(rawValue: 1 << 7)
 }
 
 /**
  * Paths for different repository types that could exist for either users or orgs. Orgs cannot have starred repositories, so there is no property for that in this struct.
  */
-struct Paths {
+struct RepoPaths {
     let forkPath: String
     let publicPath: String
     let privatePath: String
 }
 
 /**
- * Paths for different repo types that a user can have. Only users can have starred repos, so it exists as a separate property here with the common Paths struct property.
+ * Paths for different repository types that could exist for either users or orgs. Orgs cannot have forked or starred gists, so there is no property for that in this struct.
+ */
+struct GistPaths {
+    let publicPath: String
+    let privatePath: String
+}
+
+struct CommonPaths {
+    let repoPaths: RepoPaths
+    let gistPaths: GistPaths
+}
+
+/**
+ * Paths for different repo and gist types that a user can have.
  */
 struct UserPaths {
-    let paths: Paths
-    let starredPath: String
+    let commonPaths: CommonPaths
+    
+    /// - note; Only users can have starred repos, so it exists as a separate property here as opposed to living in the common RepoPaths struct property.
+    let starredRepoPath: String
+    
+    /// - note: Only users can have forked gists, so it exists as a separate property here as opposed to living in the common GistPaths struct property.
+    let forkedGistPath: String
+    
+    /// - note: Only users can have starred gists, so it exists as a separate property here as opposed to living in the common GistPaths struct property.
+    let starredGistPath: String
 }
 
 let organization = "organization"

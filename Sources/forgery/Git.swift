@@ -9,11 +9,11 @@ func setDefaultForkBranchRemotes(_ git: Git) throws {
 }
 
 /// Clones a repo and then pulls down any submodules it may have.
-func cloneRepo(repoName: String, sshURL: String, clonePath: String) -> Bool {
-    let repoPath = "\(clonePath)/\(repoName)"
+func cloneRepo(repoName: String, sshURL: String, cloneRoot: String) -> Bool {
+    let repoPath = "\(cloneRoot)/\(repoName)"
     if !FileManager.default.fileExists(atPath: repoPath) {
         logger.info("Cloning \(sshURL)...")
-        var git = Git(path: clonePath)
+        var git = Git(path: cloneRoot)
         do {
             try git.run(.clone(url: sshURL))
         } catch {

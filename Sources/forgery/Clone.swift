@@ -146,11 +146,20 @@ extension Clone {
             }
             
             do {
-                try github.cloneRepoType(repo: repo, paths: userPaths.paths, repoTypes: repoTypes)
+                try github.cloneRepoType(repo: repo, paths: userPaths.commonPaths, repoTypes: repoTypes)
                 
                 if !noStarredRepos {
-                    try github.cloneStarredRepositories(username, userPaths.starredPath, noWikis: noWikis)
+                    try github.cloneStarredRepositories(username, userPaths.starredRepoPath, noWikis: noWikis)
                 }
+            } catch {
+                logger.error("Failed to clone repo: \(error)")
+            }
+        }
+        
+        let gists = try github.synchronouslyFetchUserGists()
+        for gist in gists {
+            do {
+                try github.cloneGist
             } catch {
                 logger.error("Failed to clone repo: \(error)")
             }
@@ -174,11 +183,15 @@ extension Clone {
         }
     }
     
-    func createOrgDirectories(org: String) throws -> Paths {
+    func createOrgDirectories(org: String) throws -> CommonPaths {
         let orgReposPath = "\(basePath)/\(org)/\(reposSubpath)"
         let forkPath = "\(orgReposPath)/\(forkedSubpath)"
         let publicPath = "\(orgReposPath)/\(publicSubpath)"
         let privatePath = "\(orgReposPath)/\(privateSubpath)"
+
+        let orgGistsPath = "\(basePath)/\(org)/\(gistsSubpath)"
+        let publicGistPath = "\(orgGistsPath)/\(publicSubpath)"
+        let privateGistPath = "\(orgGistsPath)/\(privateSubpath)"
         
         if !noForkedRepos {
             try FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
@@ -189,22 +202,37 @@ extension Clone {
         if !noPrivateRepos {
             try FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
         }
+
+        if !noPublicGists {
+            try FileManager.default.createDirectory(atPath: publicGistPath, withIntermediateDirectories: true, attributes: nil)
+        }
+        if !noPrivateGists {
+            try FileManager.default.createDirectory(atPath: privateGistPath, withIntermediateDirectories: true, attributes: nil)
+        }
         
-        return Paths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath)
+        let gistPaths = GistPaths(publicPath: publicGistPath, privatePath: privateGistPath)
+        let repoPaths = RepoPaths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath)
+        return CommonPaths(repoPaths: repoPaths, gistPaths: gistPaths)
     }
     
     func createUserPaths(user: String) throws -> UserPaths {
         let userReposPath = "\(basePath)/\(user)/\(reposSubpath)"
-        let forkPath = "\(userReposPath)/\(forkedSubpath)"
-        let publicPath = "\(userReposPath)/\(publicSubpath)"
+        let forkedReposPath = "\(userReposPath)/\(forkedSubpath)"
+        let publicRepoPath = "\(userReposPath)/\(publicSubpath)"
         let privatePath = "\(userReposPath)/\(privateSubpath)"
         let starredPath = "\(userReposPath)/\(starredSubpath)"
         
+        let userGistsPath = "\(basePath)/\(user)/\(gistsSubpath)"
+        let forkedGistPath = "\(userGistsPath)/\(forkedSubpath)"
+        let publicGistPath = "\(userGistsPath)/\(publicSubpath)"
+        let privateGistPath = "\(userGistsPath)/\(privateSubpath)"
+        let starredGistPath = "\(userGistsPath)/\(starredSubpath)"
+        
         if !noForkedRepos {
-            try FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
+            try FileManager.default.createDirectory(atPath: forkedReposPath, withIntermediateDirectories: true, attributes: nil)
         }
         if !noPublicRepos {
-            try FileManager.default.createDirectory(atPath: publicPath, withIntermediateDirectories: true, attributes: nil)
+            try FileManager.default.createDirectory(atPath: publicRepoPath, withIntermediateDirectories: true, attributes: nil)
         }
         if !noPrivateRepos {
             try FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
@@ -212,7 +240,23 @@ extension Clone {
         if !noStarredRepos {
             try FileManager.default.createDirectory(atPath: starredPath, withIntermediateDirectories: true, attributes: nil)
         }
+
+        if !noForkedGists {
+            try FileManager.default.createDirectory(atPath: forkedGistPath, withIntermediateDirectories: true, attributes: nil)
+        }
+        if !noPublicGists {
+            try FileManager.default.createDirectory(atPath: publicGistPath, withIntermediateDirectories: true, attributes: nil)
+        }
+        if !noPrivateGists {
+            try FileManager.default.createDirectory(atPath: privateGistPath, withIntermediateDirectories: true, attributes: nil)
+        }
+        if !noStarredGists {
+            try FileManager.default.createDirectory(atPath: starredGistPath, withIntermediateDirectories: true, attributes: nil)
+        }
         
-        return UserPaths(paths: Paths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath), starredPath: starredPath)
+        let repoPaths = RepoPaths(forkPath: forkedReposPath, publicPath: publicRepoPath, privatePath: privatePath)
+        let gistPaths = GistPaths(publicPath: publicGistPath, privatePath: privateGistPath)
+        let commonPaths = CommonPaths(repoPaths: repoPaths, gistPaths: gistPaths)
+        return UserPaths(commonPaths: commonPaths, starredRepoPath: starredPath, forkedGistPath: forkedGistPath, starredGistPath: starredGistPath)
     }
 }
