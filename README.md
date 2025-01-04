@@ -88,6 +88,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - actions to take when `sync`ing
     - [ ] move repos/gists between public/private directories in case those permissions are switched by the upstream owner
     - [ ] move repos that have been transferred to new owners
+    - [ ] check set of local and remote branches against each other (and or for the `status` command?)
 - [ ] add option to create a cron job from the current invocation (take a cron schedule as parameter?)
 - enhancements for cloning org repos
     - [ ] allow listing multiple organizations
