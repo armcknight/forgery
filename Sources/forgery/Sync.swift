@@ -27,7 +27,7 @@ struct Sync: ParsableCommand {
     func run() throws {
         let githubClient = GitHub(accessToken: accessToken)
         
-        let user = try githubClient.synchronouslyAuthenticateUser(name: user)
+        let user = try githubClient.authenticate()
         let userDir = "\(basePath)/\(user.login!)"
         Task {
             do {

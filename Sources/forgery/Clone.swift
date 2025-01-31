@@ -93,14 +93,26 @@ struct Clone: ParsableCommand {
     
     lazy var repoTypes = {
         var types = RepoTypes()
-        if noForkedRepos {
+        if noRepos || noForkedRepos {
             types.insert(.noForks)
         }
-        if noPublicRepos {
+        if noRepos || noPublicRepos {
             types.insert(.noPublic)
         }
-        if noPrivateRepos {
+        if noRepos || noPrivateRepos {
             types.insert(.noPrivate)
+        }
+        if noRepos || noWikis {
+            types.insert(.noWikis)
+        }
+        if noGists || noForkedGists {
+            types.insert(.noForkedGists)
+        }
+        if noGists || noPrivateGists {
+            types.insert(.noPrivateGists)
+        }
+        if noGists || noPublicGists {
+            types.insert(.noPublicGists)
         }
         return types
     }()
@@ -124,7 +136,7 @@ extension Clone {
     mutating func cloneForUser(github: GitHub) throws {
         logger.info("Cloning for user...")
         
-        let user = try github.synchronouslyAuthenticate()
+        let user = try github.authenticate()
         
         guard let username = user.login else {
             logger.error("No user login info returned after authenticating.")
@@ -133,47 +145,54 @@ extension Clone {
         
         let userPaths = try createUserPaths(user: username)
         
-        logger.info("Fetching repositories owned by \(username).")
-        
-        let repos = try github.synchronouslyFetchRepositories(owner: username)
-        
-        logger.info("Retrieved list of repos to clone (\(repos.count) total).")
-        
-        for repo in repos {
-            if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
-                // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it's owned by an org owned by the user, and we have deduping selected
-                continue
-            }
+        if !noRepos {
+            logger.info("Fetching repositories owned by \(username).")
             
-            do {
-                try github.cloneRepoType(repo: repo, paths: userPaths.commonPaths, repoTypes: repoTypes)
-                
-                if !noStarredRepos {
-                    try github.cloneStarredRepositories(username, userPaths.starredRepoPath, noWikis: noWikis)
+            let repos = try github.getRepos(ownedBy: username)
+            
+            logger.info("Retrieved list of repos to clone (\(repos.count) total).")
+            
+            for repo in repos {
+                if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
+                    // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it's owned by an org owned by the user, and we have deduping selected
+                    continue
                 }
-            } catch {
-                logger.error("Failed to clone repo: \(error)")
+                
+                do {
+                    try github.cloneRepoType(repo: repo, paths: userPaths.commonPaths, repoTypes: repoTypes)
+                    
+                    guard !(noRepos || noStarredRepos) else { continue }
+                    try github.cloneStarredRepositories(username, userPaths.starredRepoPath, noWikis: noWikis)
+                } catch {
+                    logger.error("Failed to clone repo: \(error)")
+                }
             }
         }
         
-        let gists = try github.synchronouslyFetchUserGists()
-        for gist in gists {
-            do {
-                try github.cloneGist
-            } catch {
-                logger.error("Failed to clone repo: \(error)")
+        if !noGists {
+            let gists = try github.getGists()
+            for gist in gists {
+                do {
+                    try github.cloneGistType(gist: gist, paths: userPaths, repoTypes: repoTypes)
+                    
+                    if !(noGists || noStarredGists) {
+                        try github.cloneStarredGists(username, userPaths.starredGistPath)
+                    }
+                } catch {
+                    logger.error("Failed to clone repo: \(error)")
+                }
             }
         }
     }
     
     mutating func cloneForOrganization(github: GitHub, organization: String) throws {
-        let orgUser: User = try github.synchronouslyAuthenticateUser(name: organization)
+        let orgUser: User = try github.authenticateOrg(name: organization)
         let orgPaths = try createOrgDirectories(org: organization)
         guard let owner = orgUser.login else {
             logger.error("No user info returned for organization.")
             return
         }
-        let repos = try github.synchronouslyFetchRepositories(owner: owner)
+        let repos = try github.getRepos(ownedBy: owner)
         for repo in repos {
             do {
                 try github.cloneRepoType(repo: repo, paths: orgPaths, repoTypes: repoTypes)

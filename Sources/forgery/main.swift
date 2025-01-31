@@ -18,10 +18,11 @@ struct RepoTypes: OptionSet {
     static let noForkedGists = RepoTypes(rawValue: 1 << 5)
     static let noPrivateGists = RepoTypes(rawValue: 1 << 6)
     static let noPublicGists = RepoTypes(rawValue: 1 << 7)
+    // starred gists are fetched differently from github, so are handled differently in the logic that uses RepoTypes; we don't need an option for them here
 }
 
 /**
- * Paths for different repository types that could exist for either users or orgs. Orgs cannot have starred repositories, so there is no property for that in this struct.
+ * Paths for different repository types that could exist for either users or orgs. Orgs cannot have starred repositories, so there is no property for that in this struct. See the sibling property for it in `UserPaths`.`
  */
 struct RepoPaths {
     let forkPath: String
@@ -30,7 +31,7 @@ struct RepoPaths {
 }
 
 /**
- * Paths for different repository types that could exist for either users or orgs. Orgs cannot have forked or starred gists, so there is no property for that in this struct.
+ * Paths for different repository types that could exist for either users or orgs. Orgs cannot have forked or starred gists, so there is no property for that in this struct. See the sibling properties for them in `UserPaths`.`
  */
 struct GistPaths {
     let publicPath: String
