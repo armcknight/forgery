@@ -37,7 +37,7 @@ public extension GitHub {
         let userPaths = UserPaths(basePath: basePath, username: username)
         try userPaths.createOnDisk(repoTypes: repoTypes)
         
-        if repoTypes.noNonstarredRepos {
+        if !repoTypes.noNonstarredRepos {
             logger.info("Fetching repositories owned by \(username).")
             
             let repos = try getRepos(ownedBy: username)
