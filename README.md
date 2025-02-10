@@ -108,6 +108,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
     - [ ] codeberg
     - [ ] sourceforge
     - [ ] sourcehut
+    - [ ] set a tag on repos/gists to indicate which forge they are from
 - [ ] add a search function that progressively searches by the following tiers:
     - repo name
     - file name
