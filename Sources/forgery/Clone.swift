@@ -2,6 +2,7 @@ import ArgumentParser
 import Foundation
 import GitKit
 import OctoKit
+import forgery_lib
 
 struct Clone: ParsableCommand {
     @Argument(help: "The GitHub access token of the GitHub user whose repos should be synced.")
@@ -41,20 +42,17 @@ struct Clone: ParsableCommand {
     // MARK: Repo selections
     // TODO: implement
     
-    @Flag(help: "Only clone the authenticated user's or organization's public repos.")
+    @Flag(help: "Only clone the authenticated user's or organization's public repos. Has no effect on gist selection.")
     var onlyPublicRepos: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's private repos.")
+    @Flag(help: "Only clone the authenticated user's or organization's private repos. Has no effect on gist selection.")
     var onlyPrivateRepos: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's starred repos (does not apply to organizations as they cannot star repos).")
+    @Flag(help: "Only clone the authenticated user's starred repos (does not apply to organizations as they cannot star repos). Has no effect on gist selection.")
     var onlyStarredRepos: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's forked repos.")
+    @Flag(help: "Only clone the authenticated user's or organization's forked repos. Has no effect on gist selection.")
     var onlyForkedRepos: Bool = false
-    
-    @Flag(help: "Only clone wikis associated with any repos owned by user or org.")
-    var onlyWikis: Bool = false
     
     // MARK: Gists
     // TODO: implement
@@ -74,34 +72,53 @@ struct Clone: ParsableCommand {
     @Flag(help: "Do not clone any gists, no repos/wikis.")
     var noGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's public gists.")
+    @Flag(help: "Only clone the authenticated user's or organization's public gists. Has no effect on repo selection.")
     var onlyPublicGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's private gists.")
+    @Flag(help: "Only clone the authenticated user's or organization's private gists. Has no effect on repo selection.")
     var onlyPrivateGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's starred gists (does not apply to organizations as they cannot star gists).")
+    @Flag(help: "Only clone the authenticated user's starred gists (does not apply to organizations as they cannot star gists). Has no effect on repo selection.")
     var onlyStarredGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's forked gists (does not apply to organizations as they cannot fork gists).")
+    @Flag(help: "Only clone the authenticated user's forked gists (does not apply to organizations as they cannot fork gists). Has no effect on repo selection.")
     var onlyForkedGists: Bool = false
-    
-    @Flag(help: "Only clone gists, no repos/wikis.")
-    var onlyGists: Bool = false
     
     // MARK: Computed properties
     
     lazy var repoTypes = {
         var types = RepoTypes()
-        if noForkedRepos {
+        
+        if noRepos || noForkedRepos || onlyStarredRepos || onlyPublicRepos || onlyPrivateRepos {
             types.insert(.noForks)
         }
-        if noPublicRepos {
+        if noRepos || noPublicRepos || onlyStarredRepos || onlyForkedRepos || onlyPrivateRepos {
             types.insert(.noPublic)
         }
-        if noPrivateRepos {
+        if noRepos || noPrivateRepos || onlyStarredRepos || onlyPublicRepos || onlyForkedRepos {
             types.insert(.noPrivate)
         }
+        if noRepos || noStarredRepos || onlyPublicRepos || onlyPrivateRepos || onlyForkedRepos {
+            types.insert(.noStarred)
+        }
+
+        if noRepos || noWikis {
+            types.insert(.noWikis)
+        }
+        
+        if noGists || noForkedGists || onlyPrivateGists || onlyPublicGists || onlyStarredGists {
+            types.insert(.noForkedGists)
+        }
+        if noGists || noPrivateGists || onlyPublicGists || onlyStarredGists || onlyForkedGists {
+            types.insert(.noPrivateGists)
+        }
+        if noGists || noPublicGists || onlyPrivateGists || onlyForkedGists || onlyStarredGists {
+            types.insert(.noPublicGists)
+        }
+        if noGists || noStarredGists || onlyPublicGists || onlyPrivateGists || onlyForkedGists {
+            types.insert(.noStarredGists)
+        }
+        
         return types
     }()
 }
@@ -124,95 +141,91 @@ extension Clone {
     mutating func cloneForUser(github: GitHub) throws {
         logger.info("Cloning for user...")
         
-        let user = try github.synchronouslyAuthenticate()
+        let user = try github.authenticate()
         
         guard let username = user.login else {
             logger.error("No user login info returned after authenticating.")
             return
         }
         
-        let userPaths = try createUserPaths(user: username)
+        let userPaths = UserPaths(basePath: basePath, username: username)
+        try userPaths.createOnDisk(repoTypes: repoTypes)
         
-        logger.info("Fetching repositories owned by \(username).")
-        
-        let repos = try github.synchronouslyFetchRepositories(owner: username)
-        
-        logger.info("Retrieved list of repos to clone (\(repos.count) total).")
-        
-        for repo in repos {
-            if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
-                // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it's owned by an org owned by the user, and we have deduping selected
-                continue
-            }
+        if !(noRepos || repoTypes.noNonstarredRepos) {
+            logger.info("Fetching repositories owned by \(username).")
             
-            do {
-                try github.cloneRepoType(repo: repo, paths: userPaths.paths, repoTypes: repoTypes)
-                
-                if !noStarredRepos {
-                    try github.cloneStarredRepositories(username, userPaths.starredPath, noWikis: noWikis)
+            let repos = try github.getRepos(ownedBy: username)
+            
+            logger.info("Retrieved list of repos to clone (\(repos.count) total).")
+            
+            for repo in repos {
+                if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
+                    // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it's owned by an org owned by the user, and we have deduping selected
+                    continue
                 }
-            } catch {
-                logger.error("Failed to clone repo: \(error)")
+                
+                do {
+                    try github.cloneRepoType(repo: repo, paths: userPaths.commonPaths, repoTypes: repoTypes)
+                } catch {
+                    logger.error("Failed to clone repo \(String(describing: repo.fullName)): \(error)")
+                }
+            }
+        }
+        
+        if !(noRepos || repoTypes.contains(.noStarred)) {
+            let repos = try github.getStarredRepos(starredBy: username)
+            for repo in repos {
+                guard let owner = repo.owner.login else {
+                    logger.error("No owner info returned for starred repo with id \(repo.id).")
+                    continue
+                }
+                do {
+                    try github.cloneNonForkedRepo(repo: repo, cloneRoot: "\(userPaths.starredRepoPath)/\(owner)", noWikis: repoTypes.contains(.noWikis))
+                } catch {
+                    logger.error("Failed to clone starred repo \(String(describing: repo.fullName)): \(error)")
+                }
+            }
+        }
+        
+        if !(noGists || repoTypes.noNonstarredGists) {
+            let gists = try github.getGists()
+            for gist in gists {
+                do {
+                    
+                    try github.cloneGistType(gist: gist, paths: userPaths, repoTypes: repoTypes)
+                } catch {
+                    logger.error("Failed to clone gist \(gist.fullName!): \(error)")
+                }
+            }
+        }
+        
+        if !(noGists || repoTypes.contains(.noStarredGists)) {
+            let gists = try github.getStarredGists()
+            for gist in gists {
+                guard let owner = gist.owner?.login else {
+                    logger.error("No owner info returned for starred gist with id \(String(describing: gist.id)).")
+                    continue
+                }
+                try github.cloneNonForkedGist(gist: gist, cloneRoot: "\(userPaths.starredGistPath)/\(owner)")
             }
         }
     }
     
     mutating func cloneForOrganization(github: GitHub, organization: String) throws {
-        let orgUser: User = try github.synchronouslyAuthenticateUser(name: organization)
-        let orgPaths = try createOrgDirectories(org: organization)
+        let orgUser: User = try github.authenticateOrg(name: organization)
+        let orgPaths = CommonPaths(basePath: basePath, orgName: organization)
+        try orgPaths.createOnDisk(repoTypes: repoTypes)
         guard let owner = orgUser.login else {
             logger.error("No user info returned for organization.")
             return
         }
-        let repos = try github.synchronouslyFetchRepositories(owner: owner)
+        let repos = try github.getRepos(ownedBy: owner)
         for repo in repos {
             do {
                 try github.cloneRepoType(repo: repo, paths: orgPaths, repoTypes: repoTypes)
             } catch {
-                logger.error("Failed to clone repo: \(error)")
+                logger.error("Failed to clone repo \(String(describing: repo.fullName)): \(error)")
             }
         }
-    }
-    
-    func createOrgDirectories(org: String) throws -> Paths {
-        let orgReposPath = "\(basePath)/\(org)/\(reposSubpath)"
-        let forkPath = "\(orgReposPath)/\(forkedSubpath)"
-        let publicPath = "\(orgReposPath)/\(publicSubpath)"
-        let privatePath = "\(orgReposPath)/\(privateSubpath)"
-        
-        if !noForkedRepos {
-            try FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
-        }
-        if !noPublicRepos {
-            try FileManager.default.createDirectory(atPath: publicPath, withIntermediateDirectories: true, attributes: nil)
-        }
-        if !noPrivateRepos {
-            try FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
-        }
-        
-        return Paths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath)
-    }
-    
-    func createUserPaths(user: String) throws -> UserPaths {
-        let userReposPath = "\(basePath)/\(user)/\(reposSubpath)"
-        let forkPath = "\(userReposPath)/\(forkedSubpath)"
-        let publicPath = "\(userReposPath)/\(publicSubpath)"
-        let privatePath = "\(userReposPath)/\(privateSubpath)"
-        let starredPath = "\(userReposPath)/\(starredSubpath)"
-        
-        if !noForkedRepos {
-            try FileManager.default.createDirectory(atPath: forkPath, withIntermediateDirectories: true, attributes: nil)
-        }
-        if !noPublicRepos {
-            try FileManager.default.createDirectory(atPath: publicPath, withIntermediateDirectories: true, attributes: nil)
-        }
-        if !noPrivateRepos {
-            try FileManager.default.createDirectory(atPath: privatePath, withIntermediateDirectories: true, attributes: nil)
-        }
-        if !noStarredRepos {
-            try FileManager.default.createDirectory(atPath: starredPath, withIntermediateDirectories: true, attributes: nil)
-        }
-        
-        return UserPaths(paths: Paths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath), starredPath: starredPath)
     }
 }

@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import OctoKit
+import forgery_lib
 
 struct Status: ParsableCommand {
     @Argument(help: "Location of the repos for which to report statuses.")
