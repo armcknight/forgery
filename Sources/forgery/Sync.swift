@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import OctoKit
+import forgery_lib
 
 struct Sync: ParsableCommand {
     @Argument(help: "The GitHub access token of the GitHub user whose repos should be synced.")
@@ -28,10 +29,16 @@ struct Sync: ParsableCommand {
         let githubClient = GitHub(accessToken: accessToken)
         
         let user = try githubClient.authenticate()
+        
+        guard let username = user.login else {
+            logger.error("No user login info returned after authenticating.")
+            return
+        }
+        
         let userDir = "\(basePath)/\(user.login!)"
         Task {
             do {
-                let remoteRepos = try await githubClient.client.repositories(owner: user.login).map { $0 }
+                let remoteRepos = try githubClient.getRepos(ownedBy: username).map { $0 }
                 githubClient.updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
             } catch {
                 logger.error("Error fetching repositories: \(error)")

@@ -2,16 +2,16 @@ import Foundation
 import GitKit
 import OctoKit
 
-struct GitHub {
+public struct GitHub {
     let client: Octokit
     
-    init(accessToken: String) {
+    public init(accessToken: String) {
         client = Octokit(.init(accessToken))
     }
 }
 
 // MARK: API
-extension GitHub {
+public extension GitHub {
     /// Authenticate the user whose access token was used to initialize this client instance
     func authenticate() throws -> User {
         try synchronouslyAuthenticate()
@@ -292,7 +292,7 @@ extension GitHub {
     }
 }
 
-extension Gist {
+public extension Gist {
     /// A canonical path to the gist that mimics a repo's: owner/repoName
     var fullName: String? {
         guard let owner = owner?.login else { return nil }
