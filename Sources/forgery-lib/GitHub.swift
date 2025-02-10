@@ -22,6 +22,99 @@ public extension GitHub {
         try synchronouslyAuthenticateUser(name: name)
     }
     
+    // MARK: Cloning
+    
+    func cloneForUser(basePath: String, repoTypes: RepoTypeOptions.Resolved, organization: String?) throws {
+        logger.info("Cloning for user...")
+        
+        let user = try authenticate()
+        
+        guard let username = user.login else {
+            logger.error("No user login info returned after authenticating.")
+            return
+        }
+        
+        let userPaths = UserPaths(basePath: basePath, username: username)
+        try userPaths.createOnDisk(repoTypes: repoTypes)
+        
+        if repoTypes.noNonstarredRepos {
+            logger.info("Fetching repositories owned by \(username).")
+            
+            let repos = try getRepos(ownedBy: username)
+            
+            logger.info("Retrieved list of repos to clone (\(repos.count) total).")
+            
+            for repo in repos {
+                if repo.organization != nil && organization == nil && repoTypes.dedupeOrgReposCreatedByUser {
+                    // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it's owned by an org owned by the user, and we have deduping selected
+                    continue
+                }
+                
+                do {
+                    try cloneRepoType(repo: repo, paths: userPaths.commonPaths, repoTypes: repoTypes)
+                } catch {
+                    logger.error("Failed to clone repo \(String(describing: repo.fullName)): \(error)")
+                }
+            }
+        }
+        
+        if !repoTypes.noStarredRepos {
+            let repos = try getStarredRepos(starredBy: username)
+            for repo in repos {
+                guard let owner = repo.owner.login else {
+                    logger.error("No owner info returned for starred repo with id \(repo.id).")
+                    continue
+                }
+                do {
+                    try cloneNonForkedRepo(repo: repo, cloneRoot: "\(userPaths.starredRepoPath)/\(owner)", noWikis: repoTypes.noWikis)
+                } catch {
+                    logger.error("Failed to clone starred repo \(String(describing: repo.fullName)): \(error)")
+                }
+            }
+        }
+        
+        if !repoTypes.noNonstarredGists {
+            let gists = try getGists()
+            for gist in gists {
+                do {
+                    
+                    try cloneGistType(gist: gist, paths: userPaths, repoTypes: repoTypes)
+                } catch {
+                    logger.error("Failed to clone gist \(gist.fullName!): \(error)")
+                }
+            }
+        }
+        
+        if !repoTypes.noStarredGists {
+            let gists = try getStarredGists()
+            for gist in gists {
+                guard let owner = gist.owner?.login else {
+                    logger.error("No owner info returned for starred gist with id \(String(describing: gist.id)).")
+                    continue
+                }
+                try cloneNonForkedGist(gist: gist, cloneRoot: "\(userPaths.starredGistPath)/\(owner)")
+            }
+        }
+    }
+    
+    func cloneForOrganization(basePath: String, repoTypes: RepoTypeOptions.Resolved, organization: String) throws {
+        let orgUser: User = try authenticateOrg(name: organization)
+        let orgPaths = CommonPaths(basePath: basePath, orgName: organization)
+        try orgPaths.createOnDisk(repoTypes: repoTypes)
+        guard let owner = orgUser.login else {
+            logger.error("No user info returned for organization.")
+            return
+        }
+        let repos = try getRepos(ownedBy: owner)
+        for repo in repos {
+            do {
+                try cloneRepoType(repo: repo, paths: orgPaths, repoTypes: repoTypes)
+            } catch {
+                logger.error("Failed to clone repo \(String(describing: repo.fullName)): \(error)")
+            }
+        }
+    }
+    
     // MARK: Repos
     
     func getRepos(ownedBy owner: String) throws -> [Repository] {
@@ -136,17 +229,17 @@ public extension GitHub {
         }
     }
     
-    func cloneRepoType(repo: Repository, paths: CommonPaths, repoTypes: RepoTypes) throws {
+    func cloneRepoType(repo: Repository, paths: CommonPaths, repoTypes: RepoTypeOptions.Resolved) throws {
         if repo.isFork {
-            if repoTypes.contains(.noForks) { return }
-            try cloneForkedRepo(repo: repo, forkPath: paths.repoPaths.forkPath, noWikis: repoTypes.contains(.noWikis))
+            if repoTypes.noForkedRepos { return }
+            try cloneForkedRepo(repo: repo, forkPath: paths.repoPaths.forkPath, noWikis: repoTypes.noWikis)
         } else {
             if repo.isPrivate {
-                if repoTypes.contains(.noPrivate) { return }
-                try cloneNonForkedRepo(repo: repo, cloneRoot: paths.repoPaths.privatePath, noWikis: repoTypes.contains(.noWikis))
+                if repoTypes.noPrivateRepos { return }
+                try cloneNonForkedRepo(repo: repo, cloneRoot: paths.repoPaths.privatePath, noWikis: repoTypes.noWikis)
             } else {
-                if repoTypes.contains(.noPublic) { return }
-                try cloneNonForkedRepo(repo: repo, cloneRoot: paths.repoPaths.publicPath, noWikis: repoTypes.contains(.noWikis))
+                if repoTypes.noPublicRepos { return }
+                try cloneNonForkedRepo(repo: repo, cloneRoot: paths.repoPaths.publicPath, noWikis: repoTypes.noWikis)
             }
         }
     }
@@ -222,24 +315,24 @@ public extension GitHub {
         try synchronouslyFetchUserStarredGists()
     }
     
-    func cloneGistType(gist: Gist, paths: UserPaths, repoTypes: RepoTypes) throws {
+    func cloneGistType(gist: Gist, paths: UserPaths, repoTypes: RepoTypeOptions.Resolved) throws {
         guard let id = gist.id else {
             throw ForgeryError.Clone.Gist.noID
         }
         let fullyFetchedGist = try synchronouslyReadGist(id: id)
         
         if fullyFetchedGist.forkOf != nil {
-            if repoTypes.contains(.noForkedGists) { return }
+            if repoTypes.noForkedGists { return }
             try cloneForkedGist(gist: fullyFetchedGist, forkPath: paths.forkedGistPath)
         } else {
             guard let isPublic = fullyFetchedGist.publicGist else {
                 throw ForgeryError.Clone.Gist.noGistAccessInfo
             }
             if isPublic {
-                if repoTypes.contains(.noPublicGists) { return }
+                if repoTypes.noPublicGists { return }
                 try cloneNonForkedGist(gist: fullyFetchedGist, cloneRoot: paths.commonPaths.gistPaths.publicPath)
             } else {
-                if repoTypes.contains(.noPrivateGists) { return }
+                if repoTypes.noPrivateGists { return }
                 try cloneNonForkedGist(gist: fullyFetchedGist, cloneRoot: paths.commonPaths.gistPaths.privatePath)
             }
         }

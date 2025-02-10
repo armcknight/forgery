@@ -27,34 +27,6 @@ enum ForgeryError {
     }
 }
 
-public struct RepoTypes: OptionSet {
-    public init(rawValue: Int) {
-        self.rawValue = rawValue
-    }
-    
-    public let rawValue: Int
-    
-    public static let noForks = RepoTypes(rawValue: 1 << 0)
-    public static let noPrivate = RepoTypes(rawValue: 1 << 1)
-    public static let noPublic = RepoTypes(rawValue: 1 << 2)
-    public static let noStarred = RepoTypes(rawValue: 1 << 3)
-    
-    public static let noWikis = RepoTypes(rawValue: 1 << 4)
-    
-    public static let noForkedGists = RepoTypes(rawValue: 1 << 5)
-    public static let noPrivateGists = RepoTypes(rawValue: 1 << 6)
-    public static let noPublicGists = RepoTypes(rawValue: 1 << 7)
-    public static let noStarredGists = RepoTypes(rawValue: 1 << 8)
-    
-    public var noNonstarredRepos: Bool {
-        contains(.noForks) && contains(.noPublic) && contains(.noPrivate)
-    }
-    
-    public var noNonstarredGists: Bool {
-        contains(.noForkedGists) && contains(.noPublicGists) && contains(.noPrivateGists)
-    }
-}
-
 /**
  * Paths for different repository types that could exist for either users or orgs. Orgs cannot have starred repositories, so there is no property for that in this struct. See the sibling property for it in `UserPaths`.`
  */
@@ -103,21 +75,21 @@ public struct CommonPaths {
         self.repoPaths = RepoPaths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath)
     }
     
-    public func createOnDisk(repoTypes: RepoTypes) throws {
-        if !repoTypes.contains(.noForks) {
+    public func createOnDisk(repoTypes: RepoTypeOptions.Resolved) throws {
+        if !repoTypes.noForkedRepos {
             try FileManager.default.createDirectory(atPath: repoPaths.forkPath, withIntermediateDirectories: true, attributes: nil)
         }
-        if !repoTypes.contains(.noPublic) {
+        if !repoTypes.noPublicRepos {
             try FileManager.default.createDirectory(atPath: repoPaths.publicPath, withIntermediateDirectories: true, attributes: nil)
         }
-        if !repoTypes.contains(.noPrivate) {
+        if !repoTypes.noPrivateRepos {
             try FileManager.default.createDirectory(atPath: repoPaths.privatePath, withIntermediateDirectories: true, attributes: nil)
         }
 
-        if !repoTypes.contains(.noPublicGists) {
+        if !repoTypes.noPublicGists {
             try FileManager.default.createDirectory(atPath: gistPaths.publicPath, withIntermediateDirectories: true, attributes: nil)
         }
-        if !repoTypes.contains(.noPrivateGists) {
+        if !repoTypes.noPrivateGists {
             try FileManager.default.createDirectory(atPath: gistPaths.privatePath, withIntermediateDirectories: true, attributes: nil)
         }
     }
@@ -149,17 +121,17 @@ public struct UserPaths {
         self.commonPaths = CommonPaths(basePath: basePath, username: username)
     }
     
-    public func createOnDisk(repoTypes: RepoTypes) throws {
+    public func createOnDisk(repoTypes: RepoTypeOptions.Resolved) throws {
         try commonPaths.createOnDisk(repoTypes: repoTypes)
         
-        if !repoTypes.contains(.noStarred) {
+        if !repoTypes.noStarredRepos {
             try FileManager.default.createDirectory(atPath: starredRepoPath, withIntermediateDirectories: true, attributes: nil)
         }
 
-        if !repoTypes.contains(.noForkedGists) {
+        if !repoTypes.noForkedGists {
             try FileManager.default.createDirectory(atPath: forkedGistPath, withIntermediateDirectories: true, attributes: nil)
         }
-        if !repoTypes.contains(.noStarredGists) {
+        if !repoTypes.noStarredGists {
             try FileManager.default.createDirectory(atPath: starredGistPath, withIntermediateDirectories: true, attributes: nil)
         }
     }
