@@ -41,20 +41,17 @@ struct Clone: ParsableCommand {
     // MARK: Repo selections
     // TODO: implement
     
-    @Flag(help: "Only clone the authenticated user's or organization's public repos.")
+    @Flag(help: "Only clone the authenticated user's or organization's public repos. Has no effect on gist selection.")
     var onlyPublicRepos: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's private repos.")
+    @Flag(help: "Only clone the authenticated user's or organization's private repos. Has no effect on gist selection.")
     var onlyPrivateRepos: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's starred repos (does not apply to organizations as they cannot star repos).")
+    @Flag(help: "Only clone the authenticated user's starred repos (does not apply to organizations as they cannot star repos). Has no effect on gist selection.")
     var onlyStarredRepos: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's forked repos.")
+    @Flag(help: "Only clone the authenticated user's or organization's forked repos. Has no effect on gist selection.")
     var onlyForkedRepos: Bool = false
-    
-    @Flag(help: "Only clone wikis associated with any repos owned by user or org.")
-    var onlyWikis: Bool = false
     
     // MARK: Gists
     // TODO: implement
@@ -74,46 +71,53 @@ struct Clone: ParsableCommand {
     @Flag(help: "Do not clone any gists, no repos/wikis.")
     var noGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's public gists.")
+    @Flag(help: "Only clone the authenticated user's or organization's public gists. Has no effect on repo selection.")
     var onlyPublicGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's or organization's private gists.")
+    @Flag(help: "Only clone the authenticated user's or organization's private gists. Has no effect on repo selection.")
     var onlyPrivateGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's starred gists (does not apply to organizations as they cannot star gists).")
+    @Flag(help: "Only clone the authenticated user's starred gists (does not apply to organizations as they cannot star gists). Has no effect on repo selection.")
     var onlyStarredGists: Bool = false
     
-    @Flag(help: "Only clone the authenticated user's forked gists (does not apply to organizations as they cannot fork gists).")
+    @Flag(help: "Only clone the authenticated user's forked gists (does not apply to organizations as they cannot fork gists). Has no effect on repo selection.")
     var onlyForkedGists: Bool = false
-    
-    @Flag(help: "Only clone gists, no repos/wikis.")
-    var onlyGists: Bool = false
     
     // MARK: Computed properties
     
     lazy var repoTypes = {
         var types = RepoTypes()
-        if noRepos || noForkedRepos {
+        
+        if noRepos || noForkedRepos || onlyStarredRepos || onlyPublicRepos || onlyPrivateRepos {
             types.insert(.noForks)
         }
-        if noRepos || noPublicRepos {
+        if noRepos || noPublicRepos || onlyStarredRepos || onlyForkedRepos || onlyPrivateRepos {
             types.insert(.noPublic)
         }
-        if noRepos || noPrivateRepos {
+        if noRepos || noPrivateRepos || onlyStarredRepos || onlyPublicRepos || onlyForkedRepos {
             types.insert(.noPrivate)
         }
+        if noRepos || noStarredRepos || onlyPublicRepos || onlyPrivateRepos || onlyForkedRepos {
+            types.insert(.noStarred)
+        }
+
         if noRepos || noWikis {
             types.insert(.noWikis)
         }
-        if noGists || noForkedGists {
+        
+        if noGists || noForkedGists || onlyPrivateGists || onlyPublicGists || onlyStarredGists {
             types.insert(.noForkedGists)
         }
-        if noGists || noPrivateGists {
+        if noGists || noPrivateGists || onlyPublicGists || onlyStarredGists || onlyForkedGists {
             types.insert(.noPrivateGists)
         }
-        if noGists || noPublicGists {
+        if noGists || noPublicGists || onlyPrivateGists || onlyForkedGists || onlyStarredGists {
             types.insert(.noPublicGists)
         }
+        if noGists || noStarredGists || onlyPublicGists || onlyPrivateGists || onlyForkedGists {
+            types.insert(.noStarredGists)
+        }
+        
         return types
     }()
 }
@@ -145,7 +149,7 @@ extension Clone {
         
         let userPaths = try createUserPaths(user: username)
         
-        if !noRepos {
+        if !(noRepos || repoTypes.noNonstarredRepos) {
             logger.info("Fetching repositories owned by \(username).")
             
             let repos = try github.getRepos(ownedBy: username)
@@ -160,27 +164,47 @@ extension Clone {
                 
                 do {
                     try github.cloneRepoType(repo: repo, paths: userPaths.commonPaths, repoTypes: repoTypes)
-                    
-                    guard !(noRepos || noStarredRepos) else { continue }
-                    try github.cloneStarredRepositories(username, userPaths.starredRepoPath, noWikis: noWikis)
                 } catch {
-                    logger.error("Failed to clone repo: \(error)")
+                    logger.error("Failed to clone repo \(String(describing: repo.fullName)): \(error)")
                 }
             }
         }
         
-        if !noGists {
+        if !(noRepos || repoTypes.contains(.noStarred)) {
+            let repos = try github.getStarredRepos(starredBy: username)
+            for repo in repos {
+                guard let owner = repo.owner.login else {
+                    logger.error("No owner info returned for starred repo with id \(repo.id).")
+                    continue
+                }
+                do {
+                    try github.cloneNonForkedRepo(repo: repo, cloneRoot: "\(userPaths.starredRepoPath)/\(owner)", noWikis: repoTypes.contains(.noWikis))
+                } catch {
+                    logger.error("Failed to clone starred repo \(String(describing: repo.fullName)): \(error)")
+                }
+            }
+        }
+        
+        if !(noGists || repoTypes.noNonstarredGists) {
             let gists = try github.getGists()
             for gist in gists {
                 do {
-                    try github.cloneGistType(gist: gist, paths: userPaths, repoTypes: repoTypes)
                     
-                    if !(noGists || noStarredGists) {
-                        try github.cloneStarredGists(username, userPaths.starredGistPath)
-                    }
+                    try github.cloneGistType(gist: gist, paths: userPaths, repoTypes: repoTypes)
                 } catch {
-                    logger.error("Failed to clone repo: \(error)")
+                    logger.error("Failed to clone gist \(gist.fullName!): \(error)")
                 }
+            }
+        }
+        
+        if !(noGists || repoTypes.contains(.noStarredGists)) {
+            let gists = try github.getStarredGists()
+            for gist in gists {
+                guard let owner = gist.owner?.login else {
+                    logger.error("No owner info returned for starred gist with id \(String(describing: gist.id)).")
+                    continue
+                }
+                try github.cloneNonForkedGist(gist: gist, cloneRoot: "\(userPaths.starredGistPath)/\(owner)")
             }
         }
     }
@@ -197,7 +221,7 @@ extension Clone {
             do {
                 try github.cloneRepoType(repo: repo, paths: orgPaths, repoTypes: repoTypes)
             } catch {
-                logger.error("Failed to clone repo: \(error)")
+                logger.error("Failed to clone repo \(String(describing: repo.fullName)): \(error)")
             }
         }
     }

@@ -4,21 +4,54 @@ import Foundation
 import ArgumentParser
 import Logging
 
+enum ForgeryError {
+    enum Clone {
+        enum Repo: Error {
+            case alreadyCloned
+            case noSSHURL
+            case couldNotFetchRepo
+            case noOwnerLogin
+            case noName
+            case noForkParent
+            case noForkParentLogin
+            case noForkParentSSHURL
+        }
+        
+        enum Gist: Error {
+            case noPullURL
+            case noName
+            case noForkOwnerLogin
+            case noForkParent
+            case noForkParentPullURL
+            case couldNotFetchForkParent
+            case noGistAccessInfo
+            case noID
+        }
+    }
+}
+
 struct RepoTypes: OptionSet {
     let rawValue: Int
     
     static let noForks = RepoTypes(rawValue: 1 << 0)
     static let noPrivate = RepoTypes(rawValue: 1 << 1)
     static let noPublic = RepoTypes(rawValue: 1 << 2)
-    // starred repos are fetched differently from github, so are handled differently in the logic that uses RepoTypes; we don't need an option for them here
+    static let noStarred = RepoTypes(rawValue: 1 << 3)
     
-    static let noWikis = RepoTypes(rawValue: 1 << 3)
-    static let noGists = RepoTypes(rawValue: 1 << 4)
-
+    static let noWikis = RepoTypes(rawValue: 1 << 4)
+    
     static let noForkedGists = RepoTypes(rawValue: 1 << 5)
     static let noPrivateGists = RepoTypes(rawValue: 1 << 6)
     static let noPublicGists = RepoTypes(rawValue: 1 << 7)
-    // starred gists are fetched differently from github, so are handled differently in the logic that uses RepoTypes; we don't need an option for them here
+    static let noStarredGists = RepoTypes(rawValue: 1 << 8)
+    
+    var noNonstarredRepos: Bool {
+        contains(.noForks) && contains(.noPublic) && contains(.noPrivate)
+    }
+    
+    var noNonstarredGists: Bool {
+        contains(.noForkedGists) && contains(.noPublicGists) && contains(.noPrivateGists)
+    }
 }
 
 /**
