@@ -155,18 +155,12 @@ public extension GitHub {
         }
         if hasWiki {
             let wikiURL = "git@github.com:\(repo.fullName!).wiki.git"
-            
             if remoteRepoExists(repoSSHURL: wikiURL) {
-                let wikiPath = "\(cloneRoot).wiki"
-                if !FileManager.default.fileExists(atPath: wikiPath) {
-                    logger.info("Cloning \(wikiURL)...")
-                    do {
-                        try Git(path: wikiPath).run(.clone(url: wikiURL))
-                    } catch {
-                        logger.error("Failed to clone wiki for \(String(describing: repo.fullName)): \(error)")
-                    }
-                } else {
-                    logger.info("\(wikiURL) already cloned")
+                logger.info("Cloning \(wikiURL)...")
+                do {
+                    try Git(path: cloneRoot).run(.clone(url: wikiURL))
+                } catch {
+                    logger.error("Failed to clone wiki for \(String(describing: repo.fullName)): \(error)")
                 }
             }
         }
@@ -225,7 +219,7 @@ public extension GitHub {
         try setDefaultForkBranchRemotes(git)
         try tagRepo(repo: parentRepo, clonePath: repoPath)
         if !noWikis {
-            cloneWiki(repo: parentRepo, cloneRoot: repoPath)
+            cloneWiki(repo: parentRepo, cloneRoot: cloneRoot)
         }
     }
     
