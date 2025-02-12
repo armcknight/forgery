@@ -7,3 +7,6 @@
 [submodule "RequestKit"]
 	path = RequestKit
 	url = git@github.com:armcknight/RequestKit.git
+[submodule "GitLabSwift"]
+	path = GitLabSwift
+	url = git@github.com:armcknight/GitLabSwift.git

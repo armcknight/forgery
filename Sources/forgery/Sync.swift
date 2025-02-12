@@ -3,7 +3,7 @@ import Foundation
 import OctoKit
 import forgery_lib
 
-struct Sync: ParsableCommand {
+struct Sync: AsyncParsableCommand {
     @Argument(help: "The GitHub access token of the GitHub user whose repos should be synced.")
     var accessToken: String
 

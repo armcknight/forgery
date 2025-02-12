@@ -118,6 +118,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - [ ] clone/sync other types of repos
     - [ ] watched/subscribed repos
 - [ ] filter cloning by only including or excluding tag/topic
+- [ ] add option to either keep user repos in a separate directory with the username, or to put them all in one merged directory (similar with organizations, or with the user/organization directories at the next higher level?)
 
 ## Alternatives
 
