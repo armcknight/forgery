@@ -35,7 +35,7 @@ public struct CommonPaths {
     }
     
     public init(basePath: String, orgName: String) {
-        let orgReposPath = "\(basePath)/org/\(orgName)/\(reposSubpath)"
+        let orgReposPath = "\(basePath)/organization/\(orgName)/\(reposSubpath)"
         let forkPath = "\(orgReposPath)/\(forkedSubpath)"
         let publicPath = "\(orgReposPath)/\(publicSubpath)"
         let privatePath = "\(orgReposPath)/\(privateSubpath)"

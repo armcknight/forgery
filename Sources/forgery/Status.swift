@@ -17,9 +17,9 @@ struct Status: ParsableCommand {
         
         Example output:
           Public Repositories:
-            repo-name [M]  - has uncommitted changes
-            other-repo [P] - has unpushed commits
-            both-repo [MP] - has both
+            [M] /path/to/../repo-name               - has uncommitted changes
+            [P] /path/to/../repo-nameother-repo     - has unpushed commits
+            [MP] /path/to/../repo-nameboth-repo     - has both
         """
     )
 
@@ -242,7 +242,7 @@ struct Status: ParsableCommand {
             defer { dispatchGroup.leave() }
 
             guard let shellKitError = error as? Shell.Error else {
-                unpushedCommits = result!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                unpushedCommits = !result!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 return
             }
 
@@ -269,7 +269,6 @@ struct Status: ParsableCommand {
     private func printRepoGroup(_ repos: [RepoSummary]) {
         // Sort by name within each group
         for repo in repos.sorted(by: { $0.path.components(separatedBy: "/").last! < $1.path.components(separatedBy: "/").last! }) {
-            let repoName = repo.path.components(separatedBy: "/").last!
             var status = ""
             if repo.status.isDirty {
                 status += "M" // Modified
@@ -277,7 +276,7 @@ struct Status: ParsableCommand {
             if repo.status.hasUnpushedCommits {
                 status += "P" // Unpushed
             }
-            print("  \(repoName) [\(status)]")
+            print("  [\(status)] \(repo.path)")
         }
     }
 }
