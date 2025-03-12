@@ -16,6 +16,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.0.0"),
         .package(name: "git-kit", path: "git-kit"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
+        .package(url: "https://github.com/binarybirds/shell-kit", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -29,6 +30,8 @@ let package = Package(
             .product(name: "OctoKit", package: "OctoKit"),
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
             .product(name: "GitKit", package: "git-kit"),
+            .product(name: "Logging", package: "swift-log"),
+            .product(name: "ShellKit", package: "shell-kit"),
         ]
         )
     ]
