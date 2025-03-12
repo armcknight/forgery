@@ -90,6 +90,9 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
     - [ ] move repos that have been transferred to new owners
     - [ ] check set of local and remote branches against each other (and or for the `status` command?)
 - [ ] add option to create a cron job from the current invocation (take a cron schedule as parameter?)
+- [ ] add option to skip or only clone archived repos
+- new command ideas
+    - [ ] `forgery fork` to clone all repos/gists in a category (like those belonging to followed org or user, or an org that the authenticated user belongs to, starred repos, etc.) and make them forks owned by the authenticated user
 - enhancements for cloning org repos
     - [ ] allow listing multiple organizations
     - [ ] option to `clone` all repos of all organizations followed by the authenticated user
