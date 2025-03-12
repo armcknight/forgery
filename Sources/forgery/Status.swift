@@ -230,7 +230,7 @@ struct Status: ParsableCommand {
     
     private func checkRepositoryStatus(using git: Git) throws -> RepoStatus {
         // Check for uncommitted changes
-        let isDirty = try git.run(.status).isEmpty == false
+        let isDirty = try git.run(.status(short: true)).isEmpty == false
 
         // Check for unpushed commits
         var unpushedCommits: Bool = false
