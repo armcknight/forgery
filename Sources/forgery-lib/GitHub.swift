@@ -13,39 +13,45 @@ public struct GitHub {
 // MARK: API
 public extension GitHub {
     /// Authenticate the user whose access token was used to initialize this client instance
-    func authenticate() throws -> User {
-        try synchronouslyAuthenticate()
+    func authenticate() throws -> (user: User, login: String) {
+        let user = try synchronouslyAuthenticate()
+
+        guard let userLogin = user.login else {
+            throw ForgeryError.Authentication.failedToLogin
+        }
+        
+        return (user, userLogin)
     }
     
     /// Orgs cannot own access tokens, only people belonging to the org. So, in order to authenticate to access private org data, that user's access token is used to initialize the client instance, then the client authenticates with the org name.
-    func authenticateOrg(name: String) throws -> User {
-        try synchronouslyAuthenticateUser(name: name)
+    func authenticateOrg(name: String) throws -> (user: User, login: String) {
+        let user = try synchronouslyAuthenticateUser(name: name)
+
+        guard let orgUserLogin = user.login else {
+            throw ForgeryError.Authentication.FailedToLoginOrg
+        }
+
+        return (user, orgUserLogin)
     }
-    
+
     // MARK: Cloning
     
-    func cloneForUser(basePath: String, repoTypes: RepoTypeOptions.Resolved, organization: String?) throws {
+    func cloneForUser(basePath: String, repoTypes: RepoTypeOptions.Resolved, organization: String?, dedupeOrgReposCreatedByUser: Bool) throws {
         logger.info("Cloning for user...")
         
         let user = try authenticate()
         
-        guard let username = user.login else {
-            logger.error("No user login info returned after authenticating.")
-            return
-        }
-        
-        let userPaths = UserPaths(basePath: basePath, username: username)
-        try userPaths.createOnDisk(repoTypes: repoTypes)
-        
+        let userPaths = try UserPaths(basePath: basePath, username: user.login, repoTypes: repoTypes, createOnDisk: true)
+
         if !repoTypes.noNonstarredRepos {
-            logger.info("Fetching repositories owned by \(username).")
+            logger.info("Fetching repositories owned by \(user.login).")
             
-            let repos = try getRepos(ownedBy: username)
+            let repos = try getRepos(ownedBy: user.login)
             
             logger.info("Retrieved list of repos to clone (\(repos.count) total).")
             
             for repo in repos {
-                if repo.organization != nil && organization == nil && repoTypes.dedupeOrgReposCreatedByUser {
+                if repo.organization != nil && organization == nil && dedupeOrgReposCreatedByUser {
                     // the GitHub API only returns org repos that are owned by the authenticated user, so we skip this repo if it's owned by an org owned by the user, and we have deduping selected
                     continue
                 }
@@ -59,7 +65,7 @@ public extension GitHub {
         }
         
         if !repoTypes.noStarredRepos {
-            let repos = try getStarredRepos(starredBy: username)
+            let repos = try getStarredRepos(starredBy: user.login)
             for repo in repos {
                 guard let owner = repo.owner.login else {
                     logger.error("No owner info returned for starred repo with id \(repo.id).")
@@ -98,14 +104,9 @@ public extension GitHub {
     }
     
     func cloneForOrganization(basePath: String, repoTypes: RepoTypeOptions.Resolved, organization: String) throws {
-        let orgUser: User = try authenticateOrg(name: organization)
-        let orgPaths = CommonPaths(basePath: basePath, orgName: organization)
-        try orgPaths.createOnDisk(repoTypes: repoTypes)
-        guard let owner = orgUser.login else {
-            logger.error("No user info returned for organization.")
-            return
-        }
-        let repos = try getRepos(ownedBy: owner)
+        let orgUser = try authenticateOrg(name: organization)
+        let orgPaths = try CommonPaths(basePath: basePath, orgName: orgUser.login, repoTypes: repoTypes, createOnDisk: true)
+        let repos = try getRepos(ownedBy: orgUser.login)
         for repo in repos {
             do {
                 try cloneRepoType(repo: repo, paths: orgPaths, repoTypes: repoTypes)

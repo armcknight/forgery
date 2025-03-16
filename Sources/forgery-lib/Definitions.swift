@@ -1,7 +1,7 @@
 import Foundation
 import Logging
 
-enum ForgeryError {
+public enum ForgeryError {
     enum Clone {
         enum Repo: Error {
             case alreadyCloned
@@ -24,6 +24,19 @@ enum ForgeryError {
             case noGistAccessInfo
             case noID
         }
+    }
+
+    public enum Status: Error {
+        case gitLogError
+        case unexpectedGitLogStatus
+        case invalidOption
+        case useAll
+        case pathDoesNotExist
+    }
+
+    enum Authentication: Error {
+        case failedToLogin
+        case FailedToLoginOrg
     }
 }
 
