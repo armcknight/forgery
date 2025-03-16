@@ -18,37 +18,53 @@ public struct GistPaths {
 }
 
 public struct CommonPaths {
+    public static let userBasePathComponent = "user"
+    public static let orgBasePathComponent = "organization"
+
     public let repoPaths: RepoPaths
     public let gistPaths: GistPaths
-    
-    public init(basePath: String, username: String) {
-        let userReposPath = "\(basePath)/user/\(username)/\(reposSubpath)"
+    public let repoTypes: RepoTypeOptions.Resolved
+
+    public init(basePath: String, username: String, repoTypes: RepoTypeOptions.Resolved, createOnDisk: Bool) throws {
+        self.repoTypes = repoTypes
+
+        let userReposPath = "\(basePath)/\(CommonPaths.userBasePathComponent)/\(username)/\(reposSubpath)"
         let forkedReposPath = "\(userReposPath)/\(forkedSubpath)"
         let publicRepoPath = "\(userReposPath)/\(publicSubpath)"
         let privatePath = "\(userReposPath)/\(privateSubpath)"
         self.repoPaths = RepoPaths(forkPath: forkedReposPath, publicPath: publicRepoPath, privatePath: privatePath)
         
-        let userGistsPath = "\(basePath)/\(username)/\(gistsSubpath)"
+        let userGistsPath = "\(basePath)/\(CommonPaths.userBasePathComponent)/\(username)/\(gistsSubpath)"
         let publicGistPath = "\(userGistsPath)/\(publicSubpath)"
         let privateGistPath = "\(userGistsPath)/\(privateSubpath)"
         self.gistPaths = GistPaths(publicPath: publicGistPath, privatePath: privateGistPath)
+
+        if createOnDisk {
+            try self.createOnDisk()
+        }
     }
     
-    public init(basePath: String, orgName: String) {
-        let orgReposPath = "\(basePath)/organization/\(orgName)/\(reposSubpath)"
-        let forkPath = "\(orgReposPath)/\(forkedSubpath)"
-        let publicPath = "\(orgReposPath)/\(publicSubpath)"
-        let privatePath = "\(orgReposPath)/\(privateSubpath)"
-        
-        let orgGistsPath = "\(basePath)/\(orgName)/\(gistsSubpath)"
-        let publicGistPath = "\(orgGistsPath)/\(publicSubpath)"
-        let privateGistPath = "\(orgGistsPath)/\(privateSubpath)"
+    public init(basePath: String, orgName: String, repoTypes: RepoTypeOptions.Resolved, createOnDisk: Bool) throws {
+        self.repoTypes = repoTypes
+
+        let orgReposBasePath = "\(basePath)/\(CommonPaths.orgBasePathComponent)/\(orgName)/\(reposSubpath)"
+        let forkPath = "\(orgReposBasePath)/\(forkedSubpath)"
+        let publicPath = "\(orgReposBasePath)/\(publicSubpath)"
+        let privatePath = "\(orgReposBasePath)/\(privateSubpath)"
+        self.repoPaths = RepoPaths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath)
+
+        let orgGistsBasePath = "\(basePath)/\(CommonPaths.orgBasePathComponent)/\(orgName)/\(gistsSubpath)"
+        let publicGistPath = "\(orgGistsBasePath)/\(publicSubpath)"
+        let privateGistPath = "\(orgGistsBasePath)/\(privateSubpath)"
         
         self.gistPaths = GistPaths(publicPath: publicGistPath, privatePath: privateGistPath)
-        self.repoPaths = RepoPaths(forkPath: forkPath, publicPath: publicPath, privatePath: privatePath)
+
+        if createOnDisk {
+            try self.createOnDisk()
+        }
     }
     
-    public func createOnDisk(repoTypes: RepoTypeOptions.Resolved) throws {
+    private func createOnDisk() throws {
         if !repoTypes.noForkedRepos {
             try FileManager.default.createDirectory(atPath: repoPaths.forkPath, withIntermediateDirectories: true, attributes: nil)
         }
@@ -65,6 +81,31 @@ public struct CommonPaths {
         if !repoTypes.noPrivateGists {
             try FileManager.default.createDirectory(atPath: gistPaths.privatePath, withIntermediateDirectories: true, attributes: nil)
         }
+    }
+
+    public var validPaths: [String] {
+        var pathsToCheck: [String] = []
+
+        // Add repo paths
+        if !repoTypes.noPublicRepos {
+            pathsToCheck.append(repoPaths.publicPath)
+        }
+        if !repoTypes.noPrivateRepos {
+            pathsToCheck.append(repoPaths.privatePath)
+        }
+        if !repoTypes.noForkedRepos {
+            pathsToCheck.append(repoPaths.forkPath)
+        }
+
+        // Add gist paths
+        if !repoTypes.noPublicGists {
+            pathsToCheck.append(gistPaths.publicPath)
+        }
+        if !repoTypes.noPrivateGists {
+            pathsToCheck.append(gistPaths.privatePath)
+        }
+
+        return pathsToCheck
     }
 }
 
@@ -83,31 +124,46 @@ public struct UserPaths {
     /// - note: Only users can have starred gists, so it exists as a separate property here as opposed to living in the common GistPaths struct property.
     public let starredGistPath: String
     
-    public init(basePath: String, username: String) {
-        let userBasePath = "\(basePath)/user/\(username)"
-        
+    public init(basePath: String, username: String, repoTypes: RepoTypeOptions.Resolved, createOnDisk: Bool) throws {
+        let userBasePath = "\(basePath)/\(CommonPaths.userBasePathComponent)/\(username)"
+
         let userReposPath = "\(userBasePath)/\(reposSubpath)"
         self.starredRepoPath = "\(userReposPath)/\(starredSubpath)"
         
         let userGistsPath = "\(userBasePath)/\(gistsSubpath)"
         self.forkedGistPath = "\(userGistsPath)/\(forkedSubpath)"
         self.starredGistPath = "\(userGistsPath)/\(starredSubpath)"
-        
-        self.commonPaths = CommonPaths(basePath: basePath, username: username)
+
+        self.commonPaths = try CommonPaths(basePath: basePath, username: username, repoTypes: repoTypes, createOnDisk: createOnDisk)
+
+        if createOnDisk {
+            try self.createOnDisk()
+        }
     }
     
-    public func createOnDisk(repoTypes: RepoTypeOptions.Resolved) throws {
-        try commonPaths.createOnDisk(repoTypes: repoTypes)
-        
-        if !repoTypes.noStarredRepos {
+    private func createOnDisk() throws {
+        if !commonPaths.repoTypes.noStarredRepos {
             try FileManager.default.createDirectory(atPath: starredRepoPath, withIntermediateDirectories: true, attributes: nil)
         }
 
-        if !repoTypes.noForkedGists {
+        if !commonPaths.repoTypes.noForkedGists {
             try FileManager.default.createDirectory(atPath: forkedGistPath, withIntermediateDirectories: true, attributes: nil)
         }
-        if !repoTypes.noStarredGists {
+        if !commonPaths.repoTypes.noStarredGists {
             try FileManager.default.createDirectory(atPath: starredGistPath, withIntermediateDirectories: true, attributes: nil)
         }
+    }
+
+    public var validPaths: [String] {
+        var pathsToCheck = commonPaths.validPaths
+
+        if !commonPaths.repoTypes.noForkedGists {
+            pathsToCheck.append(forkedGistPath)
+        }
+        if !commonPaths.repoTypes.noStarredGists {
+            pathsToCheck.append(starredGistPath)
+        }
+
+        return pathsToCheck
     }
 }

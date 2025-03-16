@@ -27,10 +27,16 @@ public enum ForgeryError {
     }
 
     public enum Status: Error {
-        case failedToLogin
-        case FailedToLoginOrg
         case gitLogError
         case unexpectedGitLogStatus
+        case invalidOption
+        case useAll
+        case pathDoesNotExist
+    }
+
+    enum Authentication: Error {
+        case failedToLogin
+        case FailedToLoginOrg
     }
 }
 

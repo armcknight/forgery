@@ -2,8 +2,25 @@ import ArgumentParser
 import Foundation
 import OctoKit
 import forgery_lib
-import GitKit
-import ShellKit
+
+struct UserTypes: ParsableArguments {
+    public init() {}
+
+    @Option(help: "Login of the user owning repositories to check.")
+    var user: String?
+
+    @Option(help: "Org name owning repositories to check.")
+    var organization: String?
+
+    @Flag(help: "Check all users' repositories instead of just specifying one. Cannot be specified together with allOrgs; use all.")
+    var allUsers: Bool = false
+
+    @Flag(help: "Check all orgs' repositories instead of just specifying one. Cannot be specified together with allUsers; use all.")
+    var allOrgs: Bool = false
+
+    @Flag(help: "Check all users' and orgs' repositories. Supercedes allUsers and allOrgs")
+    var all: Bool = false
+}
 
 struct Status: ParsableCommand {
     static var configuration = CommandConfiguration(
@@ -30,64 +47,104 @@ struct Status: ParsableCommand {
         (basePath as NSString).expandingTildeInPath
     }
 
-    @Option(name: .shortAndLong, help: "The GitHub access token of the GitHub user whose repos private repos should be reported in addition to public repos.")
-    var accessToken: String
-    
-    @OptionGroup var repoTypes: RepoTypeOptions
-    
-    // MARK: Orgs
-    
-    @Option(help: "Instead of fetching the list of the authenticated user's repos, fetch the specified organization's.")
-    var organization: String?
+    @OptionGroup(title: "Repo types to work on")
+    var repoTypes: RepoTypeOptions
+
+    @OptionGroup(title: "The individual or sets of users/orgs whose repos should be checked")
+    var userTypes: UserTypes
+
+    @Flag(help: "Verbose logging.")
+    var verbose: Bool = false
 
     func run() throws {
-        let github = GitHub(accessToken: accessToken)
-        
-        let reposWithWork: [RepoSummary]
-        if let organization = organization {
-            let orgUser: User = try github.authenticateOrg(name: organization)
-            guard let orgUserLogin = orgUser.login else {
-                throw ForgeryError.Status.FailedToLoginOrg
-            }
-            reposWithWork = try checkRepos(pathsToCheck: pathsForOrg(organization: orgUserLogin))
-        } else {
-            let user = try github.authenticate()
-            reposWithWork = try checkRepos(pathsToCheck: try pathsForUser(user: user))
+        if verbose {
+            logger.logLevel = .debug
         }
-        
-        printSummary(reposWithWork: reposWithWork)
+
+        var repoSummaries = [RepoSummary]()
+
+        if let organization = userTypes.organization {
+            repoSummaries = try checkForOrganization(organization: organization)
+        } else if let user = userTypes.user {
+            repoSummaries = try checkForUsername(username: user)
+        } else if userTypes.all {
+            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
+                repoSummaries.append(contentsOf: try checkForUsername(username: username))
+            }
+            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
+                repoSummaries.append(contentsOf: try checkForOrganization(organization: organization))
+            }
+        } else if userTypes.allUsers {
+            if userTypes.allOrgs {
+                throw ForgeryError.Status.useAll
+            }
+
+            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
+                repoSummaries.append(contentsOf: try checkForUsername(username: username))
+            }
+        } else if userTypes.allOrgs {
+            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
+                repoSummaries.append(contentsOf: try checkForOrganization(organization: organization))
+            }
+        } else {
+            throw ForgeryError.Status.invalidOption
+        }
+
+        printSummary(reposWithWork: repoSummaries)
+    }
+
+    private func iterateOverSubdirectories(path: String, block: (String) throws -> Void) throws {
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw ForgeryError.Status.pathDoesNotExist
+        }
+
+        for case let subdirectory in try FileManager.default.contentsOfDirectory(atPath: path) {
+            try block(subdirectory)
+        }
+    }
+
+    private func checkForUsername(username: String) throws -> [RepoSummary] {
+        let userPaths = try UserPaths(basePath: basePath, username: username, repoTypes: repoTypes.resolved, createOnDisk: false)
+        return try checkRepos(pathsToCheck: userPaths.validPaths)
+    }
+
+    private func checkForOrganization(organization: String) throws -> [RepoSummary] {
+        let orgPaths = try CommonPaths(basePath: basePath, orgName: organization, repoTypes: repoTypes.resolved, createOnDisk: false)
+        return try checkRepos(pathsToCheck: orgPaths.validPaths)
     }
 
     private func checkRepos(pathsToCheck: [String]) throws -> [RepoSummary] {
         var reposWithWork: [RepoSummary] = []
         let fileManager = FileManager.default
         for path in pathsToCheck {
-            let pathURL = URL(fileURLWithPath: path)
             var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
-                print("Path does not exist: \(path)")
+            let fullPath = (path as NSString).expandingTildeInPath
+            guard fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory) else {
+                logger.debug("Path does not exist: \(path)")
                 continue
             }
             guard isDirectory.boolValue else {
-                print("Path is not a directory: \(path)")
+                logger.warning("Path is not a directory: \(path)")
                 continue
             }
-            
-            for case let repoPath in try fileManager.contentsOfDirectory(atPath: pathURL.path) {
-                let fullRepoPath = "\(pathURL.path)/\(repoPath)"
+
+            logger.debug("Checking repos in \(fullPath)")
+            for case let repoPath in try fileManager.contentsOfDirectory(atPath: fullPath) {
+                logger.debug("Checking repo: \(repoPath)")
+                let fullRepoPath = "\(fullPath)/\(repoPath)"
                 guard let type = try fileManager.attributesOfItem(atPath: fullRepoPath)[.type] as? FileAttributeType, type == .typeDirectory else {
                     continue
                 }
-                
+
                 // Check if this is a git repository
                 let gitDirURL = (fullRepoPath as NSString).appendingPathComponent(".git")
                 guard fileManager.fileExists(atPath: gitDirURL) else {
+                    logger.warning("Directory does not contain a git repo: \(fullRepoPath)")
                     continue
                 }
-                
+
                 // Check repository status
-                let git = Git(path: fullRepoPath)
-                let repoStatus = try checkRepositoryStatus(using: git)
+                let repoStatus = try checkStatus(repoPath: fullRepoPath)
                 if repoStatus.isDirty || repoStatus.hasUnpushedCommits {
                     reposWithWork.append(RepoSummary(
                         path: fullRepoPath,
@@ -101,10 +158,10 @@ struct Status: ParsableCommand {
 
     private func printSummary(reposWithWork: [RepoSummary]) {
         if reposWithWork.isEmpty {
-            print("\nAll repositories are clean and up to date!")
+            logger.info("\nAll repositories are clean and up to date!")
         } else {
-            print("\nRepositories with pending work:")
-            
+            logger.info("\nRepositories with pending work:")
+
             // Group repos by type
             let publicRepos = reposWithWork.filter { $0.path.contains("public/") }
             let privateRepos = reposWithWork.filter { $0.path.contains("private/") }
@@ -117,153 +174,43 @@ struct Status: ParsableCommand {
             
             // Print each group if it has items
             if !publicRepos.isEmpty {
-                print("\nPublic Repositories:")
+                logger.info("\nPublic Repositories:")
                 printRepoGroup(publicRepos)
             }
             if !privateRepos.isEmpty {
-                print("\nPrivate Repositories:")
+                logger.info("\nPrivate Repositories:")
                 printRepoGroup(privateRepos)
             }
             if !forkedRepos.isEmpty {
-                print("\nForked Repositories:")
+                logger.info("\nForked Repositories:")
                 printRepoGroup(forkedRepos)
             }
             if !starredRepos.isEmpty {
-                print("\nStarred Repositories:")
+                logger.info("\nStarred Repositories:")
                 printRepoGroup(starredRepos)
             }
             if !publicGists.isEmpty {
-                print("\nPublic Gists:")
+                logger.info("\nPublic Gists:")
                 printRepoGroup(publicGists)
             }
             if !privateGists.isEmpty {
-                print("\nPrivate Gists:")
+                logger.info("\nPrivate Gists:")
                 printRepoGroup(privateGists)
             }
             if !forkedGists.isEmpty {
-                print("\nForked Gists:")
+                logger.info("\nForked Gists:")
                 printRepoGroup(forkedGists)
             }
             if !starredGists.isEmpty {
-                print("\nStarred Gists:")
+                logger.info("\nStarred Gists:")
                 printRepoGroup(starredGists)
             }
         }
-    }
-
-    func pathsForUser(user: User) throws -> [String] {
-        guard let username = user.login else {
-            throw ForgeryError.Status.failedToLogin
-        }
-
-        let userPaths = UserPaths(basePath: fullBasePath, username: username)
-
-        var pathsToCheck: [String] = []
-        
-        // Add repo paths
-        if !repoTypes.resolved.noPublicRepos {
-            pathsToCheck.append(userPaths.commonPaths.repoPaths.publicPath)
-        }
-        if !repoTypes.resolved.noPrivateRepos {
-            pathsToCheck.append(userPaths.commonPaths.repoPaths.privatePath)
-        }
-        if !repoTypes.resolved.noForkedRepos {
-            pathsToCheck.append(userPaths.commonPaths.repoPaths.forkPath)
-        }
-        if !repoTypes.resolved.noStarredRepos {
-            pathsToCheck.append(userPaths.starredRepoPath)
-        }
-        
-        // Add gist paths
-        if !repoTypes.resolved.noPublicGists {
-            pathsToCheck.append(userPaths.commonPaths.gistPaths.publicPath)
-        }
-        if !repoTypes.resolved.noPrivateGists {
-            pathsToCheck.append(userPaths.commonPaths.gistPaths.privatePath)
-        }
-        if !repoTypes.resolved.noForkedGists {
-            pathsToCheck.append(userPaths.forkedGistPath)
-        }
-        if !repoTypes.resolved.noStarredGists {
-            pathsToCheck.append(userPaths.starredGistPath)
-        }
-
-        return pathsToCheck
-    }
-
-    func pathsForOrg(organization: String) throws -> [String] {
-        let orgPaths = CommonPaths(basePath: fullBasePath, orgName: organization)
-
-        var pathsToCheck: [String] = []
-
-        // Add repo paths
-        if !repoTypes.resolved.noPublicRepos {
-            pathsToCheck.append(orgPaths.repoPaths.publicPath)
-        }
-        if !repoTypes.resolved.noPrivateRepos {
-            pathsToCheck.append(orgPaths.repoPaths.privatePath)
-        }
-        if !repoTypes.resolved.noForkedRepos {
-            pathsToCheck.append(orgPaths.repoPaths.forkPath)
-        }
-
-        // Add gist paths
-        if !repoTypes.resolved.noPublicGists {
-            pathsToCheck.append(orgPaths.gistPaths.publicPath)
-        }
-        if !repoTypes.resolved.noPrivateGists {
-            pathsToCheck.append(orgPaths.gistPaths.privatePath)
-        }
-
-        return pathsToCheck
-    }
-        
-    private struct RepoStatus {
-        let isDirty: Bool
-        let hasUnpushedCommits: Bool
     }
     
     private struct RepoSummary {
         let path: String
         let status: RepoStatus
-    }
-    
-    private func checkRepositoryStatus(using git: Git) throws -> RepoStatus {
-        // Check for uncommitted changes
-        let isDirty = try git.run(.status(short: true)).isEmpty == false
-
-        // Check for unpushed commits
-        var unpushedCommits: Bool = false
-        let dispatchGroup = DispatchGroup()
-        var forgeryError: ForgeryError.Status?
-
-        dispatchGroup.enter()
-        git.run(.log(options: ["--oneline"], revisions: "@{u}..")) { result, error in
-            defer { dispatchGroup.leave() }
-
-            guard let shellKitError = error as? Shell.Error else {
-                unpushedCommits = !result!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                return
-            }
-
-            switch shellKitError {
-            case .outputData:
-                forgeryError = ForgeryError.Status.gitLogError
-            case .generic(let code, _):
-                if code == 128 {
-                    unpushedCommits = false
-                } else {
-                    forgeryError = ForgeryError.Status.unexpectedGitLogStatus
-                }
-            }
-        }
-        dispatchGroup.wait()
-
-        if let forgeryError = forgeryError {
-            throw forgeryError
-        }
-
-        return RepoStatus(isDirty: isDirty, hasUnpushedCommits: unpushedCommits)
     }
     
     private func printRepoGroup(_ repos: [RepoSummary]) {
@@ -276,7 +223,7 @@ struct Status: ParsableCommand {
             if repo.status.hasUnpushedCommits {
                 status += "P" // Unpushed
             }
-            print("  [\(status)] \(repo.path)")
+            logger.info("  [\(status)] \(repo.path)")
         }
     }
 }

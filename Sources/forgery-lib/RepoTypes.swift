@@ -4,9 +4,6 @@ import ArgumentParser
 public struct RepoTypeOptions: ParsableArguments {
     public init() {}
     
-    @Flag(help: "When cloning repos for a user, don't clone repos created by a user by owned by an organization.")
-    var dedupeOrgReposCreatedByUser: Bool = false
-    
     // MARK: Repo exclusions
     
     @Flag(help: "Do not clone the authenticated user's or organization's public repos.")
@@ -92,8 +89,6 @@ public struct RepoTypeOptions: ParsableArguments {
         public let noNonstarredRepos: Bool
         public let noNonstarredGists: Bool
         
-        public let dedupeOrgReposCreatedByUser: Bool
-        
         public init(
             noRepos: Bool,
             
@@ -119,9 +114,7 @@ public struct RepoTypeOptions: ParsableArguments {
             onlyStarredGists: Bool,
             onlyForkedGists: Bool,
             onlyPublicGists: Bool,
-            onlyPrivateGists: Bool,
-            
-            dedupeOrgReposCreatedByUser: Bool
+            onlyPrivateGists: Bool
         ) {
             self.noRepos = noRepos
             self.noForkedRepos = noRepos || noForkedRepos || onlyStarredRepos || onlyPublicRepos || onlyPrivateRepos
@@ -138,12 +131,10 @@ public struct RepoTypeOptions: ParsableArguments {
             
             self.noNonstarredRepos = !noRepos && noForkedRepos && noPublicRepos && noPrivateRepos
             self.noNonstarredGists = noForkedGists && noPublicGists && noPrivateGists
-            
-            self.dedupeOrgReposCreatedByUser = dedupeOrgReposCreatedByUser
         }
     }
     
     public var resolved: Resolved {
-        Resolved(noRepos: noRepos, noForkedRepos: noForkedRepos, noStarredRepos: noStarredRepos, noPublicRepos: noPublicRepos, noPrivateRepos: noPrivateRepos, onlyStarredRepos: onlyStarredRepos, onlyForkedRepos: onlyForkedRepos, onlyPublicRepos: onlyPublicRepos, onlyPrivateRepos: onlyPrivateRepos, noWikis: noWikis, noGists: noGists, noForkedGists: noForkedGists, noStarredGists: noStarredGists, noPublicGists: noPublicGists, noPrivateGists: noPrivateGists, onlyStarredGists: onlyStarredGists, onlyForkedGists: onlyForkedGists, onlyPublicGists: onlyPublicGists, onlyPrivateGists: onlyPrivateGists, dedupeOrgReposCreatedByUser: dedupeOrgReposCreatedByUser)
+        Resolved(noRepos: noRepos, noForkedRepos: noForkedRepos, noStarredRepos: noStarredRepos, noPublicRepos: noPublicRepos, noPrivateRepos: noPrivateRepos, onlyStarredRepos: onlyStarredRepos, onlyForkedRepos: onlyForkedRepos, onlyPublicRepos: onlyPublicRepos, onlyPrivateRepos: onlyPrivateRepos, noWikis: noWikis, noGists: noGists, noForkedGists: noForkedGists, noStarredGists: noStarredGists, noPublicGists: noPublicGists, noPrivateGists: noPrivateGists, onlyStarredGists: onlyStarredGists, onlyForkedGists: onlyForkedGists, onlyPublicGists: onlyPublicGists, onlyPrivateGists: onlyPrivateGists)
     }
 }

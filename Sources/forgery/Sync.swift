@@ -29,16 +29,10 @@ struct Sync: ParsableCommand {
         let githubClient = GitHub(accessToken: accessToken)
         
         let user = try githubClient.authenticate()
-        
-        guard let username = user.login else {
-            logger.error("No user login info returned after authenticating.")
-            return
-        }
-        
-        let userDir = "\(basePath)/\(user.login!)"
+        let userDir = "\(basePath)/\(user.login)"
         Task {
             do {
-                let remoteRepos = try githubClient.getRepos(ownedBy: username).map { $0 }
+                let remoteRepos = try githubClient.getRepos(ownedBy: user.login).map { $0 }
                 githubClient.updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
             } catch {
                 logger.error("Error fetching repositories: \(error)")
