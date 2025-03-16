@@ -93,6 +93,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - [ ] add option to skip or only clone archived repos
 - new command ideas
     - [ ] `forgery fork` to clone all repos/gists in a category (like those belonging to followed org or user, or an org that the authenticated user belongs to, starred repos, etc.) and make them forks owned by the authenticated user
+    - [ ] `wip`: commit all dirty index changes to a new branch called e.g. `forgery-wip` and have a way to check any locals/remotes for existence of such branches (make branch name customizable)
 - enhancements for cloning org repos
     - [ ] allow listing multiple organizations
     - [ ] option to `clone` all repos of all organizations followed by the authenticated user
