@@ -34,27 +34,35 @@ struct Status: ParsableCommand {
         
         Example output:
           Public Repositories:
-            [M] /path/to/../repo-name               - has uncommitted changes
-            [P] /path/to/../repo-nameother-repo     - has unpushed commits
-            [MP] /path/to/../repo-nameboth-repo     - has both
+            repo-name [M]  - has uncommitted changes
+            other-repo [P] - has unpushed commits
+            both-repo [MP] - has both
+        
+        When --wip is used, any repository with uncommitted changes will have those
+        changes committed to a new 'forgery-wip' branch and pushed to remote.
         """
     )
 
     @Argument(help: "Location of the repos for which to report statuses.")
     var basePath: String
 
-    var fullBasePath: String {
-        (basePath as NSString).expandingTildeInPath
-    }
-
-    @OptionGroup(title: "Repo types to work on")
-    var repoTypes: RepoTypeOptions
+    @Option(name: .shortAndLong, help: "The GitHub access token of the GitHub user whose repos private repos should be reported in addition to public repos.")
+    var accessToken: String?
+    
+    @Flag(name: .long, help: "Create WIP branches for repositories with uncommitted changes")
+    var wip = false
+    
+    @OptionGroup var repoTypes: RepoTypeOptions
 
     @OptionGroup(title: "The individual or sets of users/orgs whose repos should be checked")
     var userTypes: UserTypes
 
     @Flag(help: "Verbose logging.")
     var verbose: Bool = false
+
+    var fullBasePath: String {
+        (basePath as NSString).expandingTildeInPath
+    }
 
     func run() throws {
         if verbose {
@@ -213,17 +221,49 @@ struct Status: ParsableCommand {
         let status: RepoStatus
     }
     
+    private func saveWIPChanges(git: Git, repoName: String) throws {
+        // Create and checkout new branch
+        let branchName = "forgery-wip"
+        try git.checkout(["-b", branchName])
+        
+        // Stage all changes
+        try git.add(["."])
+        
+        // Create commit with current date
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let timestamp = dateFormatter.string(from: Date())
+        let commitMessage = "wip on \(timestamp)"
+        try git.commit(["-m", commitMessage])
+        
+        // Push to remote
+        try git.push(["--set-upstream", "origin", branchName])
+        
+        print("  ✓ Saved WIP changes to branch '\(branchName)'")
+    }
+
     private func printRepoGroup(_ repos: [RepoSummary]) {
         // Sort by name within each group
         for repo in repos.sorted(by: { $0.path.components(separatedBy: "/").last! < $1.path.components(separatedBy: "/").last! }) {
+            let repoName = repo.path.components(separatedBy: "/").last!
             var status = ""
             if repo.status.isDirty {
-                status += "M" // Modified
+                status += "M"
             }
             if repo.status.hasUnpushedCommits {
-                status += "P" // Unpushed
+                status += "P"
             }
-            logger.info("  [\(status)] \(repo.path)")
+            print("  \(repoName) [\(status)]")
+            
+            // If --wip flag is set and there are uncommitted changes, save them
+            if wip && repo.status.isDirty {
+                do {
+                    let git = Git(directoryURL: URL(fileURLWithPath: repo.path))
+                    try saveWIPChanges(git: git, repoName: repoName)
+                } catch {
+                    print("  ✗ Failed to save WIP changes: \(error.localizedDescription)")
+                }
+            }
         }
     }
 }
