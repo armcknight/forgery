@@ -35,38 +35,43 @@ func remoteRepoExists(repoSSHURL: String) -> Bool {
     }
 }
 
-public struct RepoState: OptionSet {
+public struct IndexState: OptionSet {
     public var rawValue: UInt
     public init(rawValue: UInt) {
         self.rawValue = rawValue
     }
 
-    public static let clean = RepoState(rawValue: 1 << 0)
-    public static let dirtyIndex = RepoState(rawValue: 1 << 1)
-    public static let pushedWIP = RepoState(rawValue: 1 << 2)
-    public static let unpushedBranches = RepoState(rawValue: 1 << 3)
+    public static let clean = IndexState(rawValue: 1 << 0)
+    public static let dirtyIndex = IndexState(rawValue: 1 << 1)
+    public static let pushedWIP = IndexState(rawValue: 1 << 2)
+}
+
+public struct RepoSummary {
+    public let path: String
+    public let status: IndexState
+    public let branchInfo: [(branch: String, unpushedCommits: Int)]
 
     public var needsReport: Bool {
-        contains(.dirtyIndex) || contains(.unpushedBranches) || contains(.unpushedBranches)
+        status.contains(.dirtyIndex) || status.contains(.pushedWIP) || !branchInfo.isEmpty
     }
 }
 
-extension RepoState: CustomStringConvertible {
+extension RepoSummary: CustomStringConvertible {
     public var description: String {
-        var status = ""
-        if contains(.pushedWIP) {
-            status += "W"
-        } else if contains(.dirtyIndex) {
-            status += "M"
+        var string = ""
+        if status.contains(IndexState.pushedWIP) {
+            string += "W"
+        } else if status.contains(IndexState.dirtyIndex) {
+            string += "M"
         }
-        if contains(.unpushedBranches) {
-            status += "P"
+        if !branchInfo.isEmpty {
+            string += "P"
         }
-        return status
+        return string
     }
 }
 
-public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) throws -> RepoState {
+public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) throws -> IndexState {
     let fullRepoPath = (repoPath as NSString).expandingTildeInPath
     logger.debug("Checking working index status of \(fullRepoPath)...")
     let git = Git(path: fullRepoPath)
@@ -83,51 +88,10 @@ public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) throws -> 
     return .dirtyIndex
 }
 
-public func checkUnpushedCommits(repoPath: String) throws -> Bool {
-    let fullRepoPath = (repoPath as NSString).expandingTildeInPath
-    logger.debug("Checking for unpushed commits in \(fullRepoPath)...")
-    let git = Git(path: fullRepoPath)
-
-    var unpushedCommits: Bool = false
-    let dispatchGroup = DispatchGroup()
-    var forgeryError: ForgeryError.Status?
-
-    dispatchGroup.enter()
-    git.run(.log(options: ["--oneline"], revisions: "@{u}..")) { result, error in
-        defer { dispatchGroup.leave() }
-
-        guard let shellKitError = error as? Shell.Error else {
-            unpushedCommits = !result!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            return
-        }
-
-        switch shellKitError {
-        case .outputData:
-            forgeryError = ForgeryError.Status.gitLogError
-        case .generic(let code, _):
-            if code == 128 {
-                unpushedCommits = false
-            } else {
-                forgeryError = ForgeryError.Status.unexpectedGitLogStatus
-            }
-        }
-    }
-    dispatchGroup.wait()
-
-    if let forgeryError = forgeryError {
-        throw forgeryError
-    }
-
-    return unpushedCommits
-}
-
-public func checkStatus(repoPath: String, pushWIPChanges: Bool) throws -> RepoState {
-    var state = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
-    if try checkUnpushedCommits(repoPath: repoPath) {
-        state.formUnion(.unpushedBranches)
-    }
-
-    return state
+public func summarizeStatus(repoPath: String, pushWIPChanges: Bool) throws -> RepoSummary {
+    let state = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
+    let branchInfo = try getLocalBranchesWithUnpushedCommits(repoPath: repoPath)
+    return RepoSummary(path: repoPath, status: state, branchInfo: branchInfo)
 }
 
 func saveWIPChanges(repoPath: String) throws {
@@ -147,4 +111,26 @@ func saveWIPChanges(repoPath: String) throws {
     try git.run(.push())
 
     print("  ✓ Saved WIP changes to branch '\(branchName)'")
+}
+
+public func diffstat(repoPath: String) throws -> String {
+    let git = Git(path: repoPath)
+    return try git.run(.status())
+}
+
+public func getLocalBranchesWithUnpushedCommits(repoPath: String) throws -> [(branch: String, unpushedCommits: Int)] {
+    let git = Git(path: repoPath)
+    let branchesOutput = try git.run(.raw("branch"))
+    let branches = branchesOutput.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "* ", with: "") }
+
+    var branchesWithUnpushedCommits: [(branch: String, unpushedCommits: Int)] = []
+
+    for branch in branches {
+        let unpushedCommitsOutput = try git.run(.revList(branch: branch, count: true, revisions: "@{u}.."))
+        if let unpushedCommits = Int(unpushedCommitsOutput.trimmingCharacters(in: .whitespacesAndNewlines)), unpushedCommits > 0 {
+            branchesWithUnpushedCommits.append((branch: branch, unpushedCommits: unpushedCommits))
+        }
+    }
+
+    return branchesWithUnpushedCommits
 }

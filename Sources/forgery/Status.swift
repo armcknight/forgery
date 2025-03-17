@@ -95,7 +95,7 @@ struct Status: ParsableCommand {
             throw ForgeryError.Status.invalidOption
         }
 
-        printSummary(reposWithWork: repoSummaries)
+        try printSummary(reposWithWork: repoSummaries)
     }
 
     private func iterateOverSubdirectories(path: String, block: (String) throws -> Void) throws {
@@ -147,19 +147,16 @@ struct Status: ParsableCommand {
                     continue
                 }
 
-                let repoStatus = try checkStatus(repoPath: fullRepoPath, pushWIPChanges: pushWIP)
-                if repoStatus.needsReport {
-                    reposWithWork.append(RepoSummary(
-                        path: fullRepoPath,
-                        status: repoStatus
-                    ))
+                let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: pushWIP)
+                if repoSummary.needsReport {
+                    reposWithWork.append(repoSummary)
                 }
             }
         }
         return reposWithWork
     }
 
-    private func printSummary(reposWithWork: [RepoSummary]) {
+    private func printSummary(reposWithWork: [RepoSummary]) throws {
         guard !reposWithWork.isEmpty else {
             print("\nAll repositories are clean and up to date!")
             return
@@ -171,35 +168,37 @@ struct Status: ParsableCommand {
         } else {
             modifiedRepos = reposWithWork.filter { $0.status.contains(.dirtyIndex) }
         }
-        let unpushedRepos = reposWithWork.filter { $0.status.contains(.unpushedBranches) }
+        let unpushedRepos = reposWithWork.filter { !$0.branchInfo.isEmpty }
 
-        printReposByType(modifiedRepos, title: "Repositories with uncommitted changes" + (pushWIP ? " pushed to WIP branches" : ""))
-        printReposByType(unpushedRepos, title: "Repositories with unpushed commits on branches")
-    }
-    
-    private struct RepoSummary {
-        let path: String
-        let status: RepoState
+        try printReposByType(modifiedRepos, title: "Repositories with uncommitted changes" + (pushWIP ? " pushed to WIP branches" : ""), dirty: !pushWIP, unpushed: false)
+        try printReposByType(unpushedRepos, title: "Repositories with unpushed commits on branches", dirty: false, unpushed: true)
     }
 
-    private func printReposByType(_ repos: [RepoSummary], title: String) {
+    private func printReposByType(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool) throws {
         guard !repos.isEmpty else { return }
         print("\n\(title):")
-        printRepoGroup(repos.filter { $0.path.contains("repos/public/") }, title: "Public Repositories")
-        printRepoGroup(repos.filter { $0.path.contains("repos/private/") }, title: "Private Repositories")
-        printRepoGroup(repos.filter { $0.path.contains("repos/forks/") }, title: "Forked Repositories")
-        printRepoGroup(repos.filter { $0.path.contains("repos/starred/") }, title: "Starred Repositories")
-        printRepoGroup(repos.filter { $0.path.contains("gists/public/") }, title: "Public Gists")
-        printRepoGroup(repos.filter { $0.path.contains("gists/private/") }, title: "Private Gists")
-        printRepoGroup(repos.filter { $0.path.contains("gists/forks/") }, title: "Forked Gists")
-        printRepoGroup(repos.filter { $0.path.contains("gists/starred/") }, title: "Starred Gists")
+        try printRepoGroup(repos.filter { $0.path.contains("repos/public/") }, title: "Public Repositories", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("repos/private/") }, title: "Private Repositories", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("repos/forks/") }, title: "Forked Repositories", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("repos/starred/") }, title: "Starred Repositories", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/public/") }, title: "Public Gists", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/private/") }, title: "Private Gists", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/forks/") }, title: "Forked Gists", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/starred/") }, title: "Starred Gists", dirty: dirty, unpushed: unpushed)
     }
 
-    private func printRepoGroup(_ repos: [RepoSummary], title: String) {
+    private func printRepoGroup(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool) throws {
         guard !repos.isEmpty else { return }
         print("\t\(title):")
         for repo in repos.sorted(by: { $0.path.components(separatedBy: "/").last! < $1.path.components(separatedBy: "/").last! }) {
-            print("\t  [\(repo.status.description)] \(repo.path)")
+            print("\t\t[\(repo.description)] \(repo.path)")
+            if dirty {
+                print(try diffstat(repoPath: repo.path).split(separator: "\n").map({ "\t\t\t\($0)" }).joined(separator: "\n"))
+            } else if unpushed {
+                for branch in repo.branchInfo {
+                    print("\t\t\t\(branch.branch): \(branch.unpushedCommits) unpushed commits")
+                }
+            }
         }
     }
 }
