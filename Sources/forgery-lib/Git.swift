@@ -35,19 +35,59 @@ func remoteRepoExists(repoSSHURL: String) -> Bool {
     }
 }
 
-public struct RepoStatus {
-    public let isDirty: Bool
-    public let hasUnpushedCommits: Bool
+public struct RepoState: OptionSet {
+    public var rawValue: UInt
+    public init(rawValue: UInt) {
+        self.rawValue = rawValue
+    }
+
+    public static let clean = RepoState(rawValue: 1 << 0)
+    public static let dirtyIndex = RepoState(rawValue: 1 << 1)
+    public static let pushedWIP = RepoState(rawValue: 1 << 2)
+    public static let unpushedBranches = RepoState(rawValue: 1 << 3)
+
+    public var needsReport: Bool {
+        contains(.dirtyIndex) || contains(.unpushedBranches) || contains(.unpushedBranches)
+    }
 }
 
-public func checkStatus(repoPath: String) throws -> RepoStatus {
-    let fullRepoPath = (repoPath as NSString).expandingTildeInPath
-    logger.info("Checking status of \(fullRepoPath)...")
-    let git = Git(path: fullRepoPath)
-    // Check for uncommitted changes
-    let isDirty = try git.run(.status(short: true)).isEmpty == false
+extension RepoState: CustomStringConvertible {
+    public var description: String {
+        var status = ""
+        if contains(.dirtyIndex) {
+            status += "M"
+        }
+        if contains(.unpushedBranches) {
+            status += "P"
+        }
+        return status
+    }
+}
 
-    // Check for unpushed commits
+public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) throws -> RepoState {
+    let fullRepoPath = (repoPath as NSString).expandingTildeInPath
+    logger.info("Checking working index status of \(fullRepoPath)...")
+    let git = Git(path: fullRepoPath)
+
+    var wipState = RepoState.clean
+    let clean = try git.run(.status(short: true)).isEmpty
+    if !clean {
+        wipState = .dirtyIndex
+    }
+
+    if pushWIPChanges && !clean {
+        try saveWIPChanges(repoPath: fullRepoPath)
+        wipState = .pushedWIP
+    }
+
+    return wipState
+}
+
+public func checkUnpushedCommits(repoPath: String) throws -> Bool {
+    let fullRepoPath = (repoPath as NSString).expandingTildeInPath
+    logger.info("Checking for unpushed commits in \(fullRepoPath)...")
+    let git = Git(path: fullRepoPath)
+
     var unpushedCommits: Bool = false
     let dispatchGroup = DispatchGroup()
     var forgeryError: ForgeryError.Status?
@@ -78,5 +118,33 @@ public func checkStatus(repoPath: String) throws -> RepoStatus {
         throw forgeryError
     }
 
-    return RepoStatus(isDirty: isDirty, hasUnpushedCommits: unpushedCommits)
+    return unpushedCommits
+}
+
+public func checkStatus(repoPath: String, pushWIPChanges: Bool) throws -> RepoState {
+    var state = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
+    if try checkUnpushedCommits(repoPath: repoPath) {
+        state.formUnion(.unpushedBranches)
+    }
+
+    return state
+}
+
+func saveWIPChanges(repoPath: String) throws {
+    let git = Git(path: repoPath)
+
+    let branchName = "forgery-wip"
+    try git.run(.checkout(branch: branchName, create: true))
+    try git.run(.addAll)
+
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    let timestamp = dateFormatter.string(from: Date())
+    let commitMessage = "wip on \(timestamp)"
+    try git.run(.commit(message: commitMessage))
+
+    // TODO: if this is a fork, push to remote named "fork" instead of "origin"
+    try git.run(.push())
+
+    print("  ✓ Saved WIP changes to branch '\(branchName)'")
 }

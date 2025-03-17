@@ -7,10 +7,10 @@ struct UserTypes: ParsableArguments {
     public init() {}
 
     @Option(help: "Login of the user owning repositories to check.")
-    var user: String?
+    var user: String? = nil
 
     @Option(help: "Org name owning repositories to check.")
-    var organization: String?
+    var organization: String? = nil
 
     @Flag(help: "Check all users' repositories instead of just specifying one. Cannot be specified together with allOrgs; use all.")
     var allUsers: Bool = false
@@ -37,15 +37,17 @@ struct Status: ParsableCommand {
             [M] /path/to/../repo-name               - has uncommitted changes
             [P] /path/to/../repo-nameother-repo     - has unpushed commits
             [MP] /path/to/../repo-nameboth-repo     - has both
+        
+        When --wip is used, any repository with uncommitted changes will have those
+        changes committed to a new 'forgery-wip' branch and pushed to remote.
         """
     )
 
-    @Argument(help: "Location of the repos for which to report statuses.")
-    var basePath: String
+    @OptionGroup(title: "Basic options")
+    var baseOptions: BaseOptions
 
-    var fullBasePath: String {
-        (basePath as NSString).expandingTildeInPath
-    }
+    @Flag(name: .long, help: "Create WIP branches for repositories with uncommitted changes")
+    var pushWIP = false
 
     @OptionGroup(title: "Repo types to work on")
     var repoTypes: RepoTypeOptions
@@ -53,11 +55,12 @@ struct Status: ParsableCommand {
     @OptionGroup(title: "The individual or sets of users/orgs whose repos should be checked")
     var userTypes: UserTypes
 
-    @Flag(help: "Verbose logging.")
-    var verbose: Bool = false
+    var fullBasePath: String {
+        (baseOptions.basePath as NSString).expandingTildeInPath
+    }
 
     func run() throws {
-        if verbose {
+        if baseOptions.verbose {
             logger.logLevel = .debug
         }
 
@@ -104,12 +107,12 @@ struct Status: ParsableCommand {
     }
 
     private func checkForUsername(username: String) throws -> [RepoSummary] {
-        let userPaths = try UserPaths(basePath: basePath, username: username, repoTypes: repoTypes.resolved, createOnDisk: false)
+        let userPaths = try UserPaths(basePath: baseOptions.basePath, username: username, repoTypes: repoTypes.resolved, createOnDisk: false)
         return try checkRepos(pathsToCheck: userPaths.validPaths)
     }
 
     private func checkForOrganization(organization: String) throws -> [RepoSummary] {
-        let orgPaths = try CommonPaths(basePath: basePath, orgName: organization, repoTypes: repoTypes.resolved, createOnDisk: false)
+        let orgPaths = try CommonPaths(basePath: baseOptions.basePath, orgName: organization, repoTypes: repoTypes.resolved, createOnDisk: false)
         return try checkRepos(pathsToCheck: orgPaths.validPaths)
     }
 
@@ -136,16 +139,14 @@ struct Status: ParsableCommand {
                     continue
                 }
 
-                // Check if this is a git repository
                 let gitDirURL = (fullRepoPath as NSString).appendingPathComponent(".git")
                 guard fileManager.fileExists(atPath: gitDirURL) else {
                     logger.warning("Directory does not contain a git repo: \(fullRepoPath)")
                     continue
                 }
 
-                // Check repository status
-                let repoStatus = try checkStatus(repoPath: fullRepoPath)
-                if repoStatus.isDirty || repoStatus.hasUnpushedCommits {
+                let repoStatus = try checkStatus(repoPath: fullRepoPath, pushWIPChanges: pushWIP)
+                if repoStatus.needsReport {
                     reposWithWork.append(RepoSummary(
                         path: fullRepoPath,
                         status: repoStatus
@@ -210,20 +211,12 @@ struct Status: ParsableCommand {
     
     private struct RepoSummary {
         let path: String
-        let status: RepoStatus
+        let status: RepoState
     }
-    
+
     private func printRepoGroup(_ repos: [RepoSummary]) {
-        // Sort by name within each group
         for repo in repos.sorted(by: { $0.path.components(separatedBy: "/").last! < $1.path.components(separatedBy: "/").last! }) {
-            var status = ""
-            if repo.status.isDirty {
-                status += "M" // Modified
-            }
-            if repo.status.hasUnpushedCommits {
-                status += "P" // Unpushed
-            }
-            logger.info("  [\(status)] \(repo.path)")
+            print("  [\(repo.status.description)] \(repo.path)")
         }
     }
 }

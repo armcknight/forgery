@@ -92,8 +92,11 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
 - [ ] add option to create a cron job from the current invocation (take a cron schedule as parameter?)
 - [ ] add option to skip or only clone archived repos
 - new command ideas
-    - [ ] `forgery fork` to clone all repos/gists in a category (like those belonging to followed org or user, or an org that the authenticated user belongs to, starred repos, etc.) and make them forks owned by the authenticated user
-    - [ ] `wip`: commit all dirty index changes to a new branch called e.g. `forgery-wip` and have a way to check any locals/remotes for existence of such branches (make branch name customizable)
+    - [ ] `fork` to clone all repos/gists in a category (like those belonging to followed org or user, or an org that the authenticated user belongs to, starred repos, etc.) and make them forks owned by the authenticated user
+    - [x] `status` command
+        - [x] `--wip` option: commit all dirty index changes to a new branch called e.g. `forgery-wip` and have a way to check any locals/remotes for existence of such branches 
+            - [ ] make branch name customizable
+        - [ ] `--fork-dirty-starred` option: for a starred repo with a dirtied index or unpushed commits, create a fork if one doesn't already exist under the user, push it to that instead, move the local modified clone from star to fork path, and then reclone fresh starred version
 - enhancements for cloning org repos
     - [ ] allow listing multiple organizations
     - [ ] option to `clone` all repos of all organizations followed by the authenticated user
