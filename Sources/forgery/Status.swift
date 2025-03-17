@@ -35,6 +35,7 @@ struct Status: ParsableCommand {
         Example output:
           Public Repositories:
             [M] /path/to/../repo-name               - has uncommitted changes
+            [W] /path/to/../repo-namewip-repo       - uncommitted changes were pushed to WIP branch
             [P] /path/to/../repo-nameother-repo     - has unpushed commits
             [MP] /path/to/../repo-nameboth-repo     - has both
         

@@ -54,7 +54,9 @@ public struct RepoState: OptionSet {
 extension RepoState: CustomStringConvertible {
     public var description: String {
         var status = ""
-        if contains(.dirtyIndex) {
+        if contains(.pushedWIP) {
+            status += "W"
+        } else if contains(.dirtyIndex) {
             status += "M"
         }
         if contains(.unpushedBranches) {
