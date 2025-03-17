@@ -31,13 +31,14 @@ struct Status: ParsableCommand {
         Status indicators:
           M - Modified working tree (uncommitted changes)
           P - Unpushed commits exist
+          W - Uncommitted changes were committed and pushed to a WIP branch
         
         Example output:
           Public Repositories:
             [M] /path/to/../repo-name               - has uncommitted changes
             [W] /path/to/../repo-namewip-repo       - uncommitted changes were pushed to WIP branch
             [P] /path/to/../repo-nameother-repo     - has unpushed commits
-            [MP] /path/to/../repo-nameboth-repo     - has both
+            [MP]/[WP] /path/to/../repo-nameboth-repo     - has both
         
         When --wip is used, any repository with uncommitted changes will have those
         changes committed to a new 'forgery-wip' branch and pushed to remote.
@@ -159,55 +160,21 @@ struct Status: ParsableCommand {
     }
 
     private func printSummary(reposWithWork: [RepoSummary]) {
-        if reposWithWork.isEmpty {
-            logger.info("\nAll repositories are clean and up to date!")
-        } else {
-            logger.info("\nRepositories with pending work:")
-
-            // Group repos by type
-            let publicRepos = reposWithWork.filter { $0.path.contains("public/") }
-            let privateRepos = reposWithWork.filter { $0.path.contains("private/") }
-            let forkedRepos = reposWithWork.filter { $0.path.contains("forks/") }
-            let starredRepos = reposWithWork.filter { $0.path.contains("starred/") }
-            let publicGists = reposWithWork.filter { $0.path.contains("gists/public/") }
-            let privateGists = reposWithWork.filter { $0.path.contains("gists/private/") }
-            let forkedGists = reposWithWork.filter { $0.path.contains("gists/forks/") }
-            let starredGists = reposWithWork.filter { $0.path.contains("gists/starred/") }
-            
-            // Print each group if it has items
-            if !publicRepos.isEmpty {
-                logger.info("\nPublic Repositories:")
-                printRepoGroup(publicRepos)
-            }
-            if !privateRepos.isEmpty {
-                logger.info("\nPrivate Repositories:")
-                printRepoGroup(privateRepos)
-            }
-            if !forkedRepos.isEmpty {
-                logger.info("\nForked Repositories:")
-                printRepoGroup(forkedRepos)
-            }
-            if !starredRepos.isEmpty {
-                logger.info("\nStarred Repositories:")
-                printRepoGroup(starredRepos)
-            }
-            if !publicGists.isEmpty {
-                logger.info("\nPublic Gists:")
-                printRepoGroup(publicGists)
-            }
-            if !privateGists.isEmpty {
-                logger.info("\nPrivate Gists:")
-                printRepoGroup(privateGists)
-            }
-            if !forkedGists.isEmpty {
-                logger.info("\nForked Gists:")
-                printRepoGroup(forkedGists)
-            }
-            if !starredGists.isEmpty {
-                logger.info("\nStarred Gists:")
-                printRepoGroup(starredGists)
-            }
+        guard !reposWithWork.isEmpty else {
+            print("\nAll repositories are clean and up to date!")
+            return
         }
+
+        let modifiedRepos: [RepoSummary]
+        if pushWIP {
+            modifiedRepos = reposWithWork.filter { $0.status.contains(.pushedWIP) }
+        } else {
+            modifiedRepos = reposWithWork.filter { $0.status.contains(.dirtyIndex) }
+        }
+        let unpushedRepos = reposWithWork.filter { $0.status.contains(.unpushedBranches) }
+
+        printReposByType(modifiedRepos, title: "Repositories with uncommitted changes" + (pushWIP ? " pushed to WIP branches" : ""))
+        printReposByType(unpushedRepos, title: "Repositories with unpushed commits on branches")
     }
     
     private struct RepoSummary {
@@ -215,9 +182,24 @@ struct Status: ParsableCommand {
         let status: RepoState
     }
 
-    private func printRepoGroup(_ repos: [RepoSummary]) {
+    private func printReposByType(_ repos: [RepoSummary], title: String) {
+        guard !repos.isEmpty else { return }
+        print("\n\(title):")
+        printRepoGroup(repos.filter { $0.path.contains("repos/public/") }, title: "Public Repositories")
+        printRepoGroup(repos.filter { $0.path.contains("repos/private/") }, title: "Private Repositories")
+        printRepoGroup(repos.filter { $0.path.contains("repos/forks/") }, title: "Forked Repositories")
+        printRepoGroup(repos.filter { $0.path.contains("repos/starred/") }, title: "Starred Repositories")
+        printRepoGroup(repos.filter { $0.path.contains("gists/public/") }, title: "Public Gists")
+        printRepoGroup(repos.filter { $0.path.contains("gists/private/") }, title: "Private Gists")
+        printRepoGroup(repos.filter { $0.path.contains("gists/forks/") }, title: "Forked Gists")
+        printRepoGroup(repos.filter { $0.path.contains("gists/starred/") }, title: "Starred Gists")
+    }
+
+    private func printRepoGroup(_ repos: [RepoSummary], title: String) {
+        guard !repos.isEmpty else { return }
+        print("\t\(title):")
         for repo in repos.sorted(by: { $0.path.components(separatedBy: "/").last! < $1.path.components(separatedBy: "/").last! }) {
-            print("  [\(repo.status.description)] \(repo.path)")
+            print("\t  [\(repo.status.description)] \(repo.path)")
         }
     }
 }

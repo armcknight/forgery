@@ -68,26 +68,24 @@ extension RepoState: CustomStringConvertible {
 
 public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) throws -> RepoState {
     let fullRepoPath = (repoPath as NSString).expandingTildeInPath
-    logger.info("Checking working index status of \(fullRepoPath)...")
+    logger.debug("Checking working index status of \(fullRepoPath)...")
     let git = Git(path: fullRepoPath)
 
-    var wipState = RepoState.clean
     let clean = try git.run(.status(short: true)).isEmpty
-    if !clean {
-        wipState = .dirtyIndex
-    }
 
-    if pushWIPChanges && !clean {
+    guard !clean else { return .clean }
+
+    guard !pushWIPChanges else {
         try saveWIPChanges(repoPath: fullRepoPath)
-        wipState = .pushedWIP
+        return .pushedWIP
     }
 
-    return wipState
+    return .dirtyIndex
 }
 
 public func checkUnpushedCommits(repoPath: String) throws -> Bool {
     let fullRepoPath = (repoPath as NSString).expandingTildeInPath
-    logger.info("Checking for unpushed commits in \(fullRepoPath)...")
+    logger.debug("Checking for unpushed commits in \(fullRepoPath)...")
     let git = Git(path: fullRepoPath)
 
     var unpushedCommits: Bool = false
