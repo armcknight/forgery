@@ -18,7 +18,7 @@ struct UserTypes: ParsableArguments {
     @Flag(help: "Check all orgs' repositories instead of just specifying one. Cannot be specified together with allUsers; use all.")
     var allOrgs: Bool = false
 
-    @Flag(help: "Check all users' and orgs' repositories. Supercedes allUsers and allOrgs")
+    @Flag(help: "Check all users' and orgs' repositories. Supersedes allUsers and allOrgs")
     var all: Bool = false
 }
 
@@ -31,25 +31,18 @@ struct Status: ParsableCommand {
         Status indicators:
           M - Modified working tree (uncommitted changes)
           P - Unpushed commits exist
-          W - Uncommitted changes were committed and pushed to a WIP branch
         
         Example output:
           Public Repositories:
             [M] /path/to/../repo-name               - has uncommitted changes
-            [W] /path/to/../repo-namewip-repo       - uncommitted changes were pushed to WIP branch
             [P] /path/to/../repo-nameother-repo     - has unpushed commits
-            [MP]/[WP] /path/to/../repo-nameboth-repo     - has both
-        
-        When --wip is used, any repository with uncommitted changes will have those
-        changes committed to a new 'forgery-wip' branch and pushed to remote.
+            [MP] /path/to/../repo-nameboth-repo     - has both
         """
     )
 
     @OptionGroup(title: "Basic options")
     var baseOptions: BaseOptions
 
-    @Flag(name: .long, help: "Create WIP branches for repositories with uncommitted changes")
-    var pushWIP = false
 
     @OptionGroup(title: "Repo types to work on")
     var repoTypes: RepoTypeOptions
@@ -147,7 +140,7 @@ struct Status: ParsableCommand {
                     continue
                 }
 
-                let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: pushWIP)
+                let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: false)
                 if repoSummary.needsReport {
                     reposWithWork.append(repoSummary)
                 }
@@ -162,15 +155,10 @@ struct Status: ParsableCommand {
             return
         }
 
-        let modifiedRepos: [RepoSummary]
-        if pushWIP {
-            modifiedRepos = reposWithWork.filter { $0.status.contains(.pushedWIP) }
-        } else {
-            modifiedRepos = reposWithWork.filter { $0.status.contains(.dirtyIndex) }
-        }
+        let modifiedRepos = reposWithWork.filter { $0.status.contains(.dirtyIndex) }
         let unpushedRepos = reposWithWork.filter { !$0.branchInfo.isEmpty }
 
-        try printReposByType(modifiedRepos, title: "Repositories with uncommitted changes" + (pushWIP ? " pushed to WIP branches" : ""), dirty: !pushWIP, unpushed: false)
+        try printReposByType(modifiedRepos, title: "Repositories with uncommitted changes", dirty: true, unpushed: false)
         try printReposByType(unpushedRepos, title: "Repositories with unpushed commits on branches", dirty: false, unpushed: true)
     }
 

@@ -120,7 +120,7 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
         - [ ] check set of local and remote branches against each other
     - [x] `status`
         - [x] `--wip` option: commit all dirty index changes to a new branch called e.g. `forgery-wip` and have a way to check any locals/remotes for existence of such branches 
-            - [ ] this should actually go under the `sync` command
+            - [x] this should actually go under the `sync` command
             - [ ] make branch name customizable
         - [ ] handle submodules
         - [ ] options to fast-forward or pull-rebase new upstream commits
