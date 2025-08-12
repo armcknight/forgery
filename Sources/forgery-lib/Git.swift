@@ -4,9 +4,9 @@ import ShellKit
 
 /// Set default branch to pull from upstream remote but push to fork remote
 func setDefaultForkBranchRemotes(_ git: Git) throws {
-    let defaultBranch = try git.run(.revParse(abbrevRef: "fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
-    try git.run(.config(name: "branch.\(defaultBranch).remote", value: "upstream"))
-    try git.run(.config(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
+    let defaultBranch = try git.run(.revParse(abbrevRef: true, revision: "fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
+    try git.run(.writeConfig(name: "branch.\(defaultBranch).remote", value: "upstream"))
+    try git.run(.writeConfig(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
 }
 
 /// Clones a repo and then pulls down any submodules it may have.
@@ -126,7 +126,7 @@ public func getLocalBranchesWithUnpushedCommits(repoPath: String) throws -> [(br
     var branchesWithUnpushedCommits: [(branch: String, unpushedCommits: Int)] = []
 
     for branch in branches {
-        let unpushedCommitsOutput = try git.run(.revList(branch: branch, count: true, revisions: "@{u}.."))
+        let unpushedCommitsOutput = try git.run(.revList(count: true, revisions: "@{u}.."))
         if let unpushedCommits = Int(unpushedCommitsOutput.trimmingCharacters(in: .whitespacesAndNewlines)), unpushedCommits > 0 {
             branchesWithUnpushedCommits.append((branch: branch, unpushedCommits: unpushedCommits))
         }
