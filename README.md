@@ -98,6 +98,9 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
         - [ ] clone/sync other types of repos
             - [ ] watched/subscribed repos
         - [ ] filter cloning by only including or excluding tag/topic
+        - enhancements for starred repos:
+            - [ ] perform shallow clones
+            - [ ] compress at rest on disk
     - [ ] `fork` 
         - [ ] fork all repos/gists in a category (like those belonging to followed org or user, or an org that the authenticated user belongs to, starred repos, etc.) and make them forks owned by the authenticated user
         - [ ] fork a list of repos/gists as specified in arg list
@@ -107,8 +110,13 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
             - [ ] how to handle conflicts?
         - [ ] handle submodules
         - [ ] pretty print a summary at the end
-        - [ ] move repos/gists between public/private directories in case those permissions are switched by the upstream owner
-        - [ ] move repos that have been transferred to new owners
+        - handle some common types of changes
+            - [ ] move repos/gists between public/private directories in case those permissions are switched by the upstream owner
+            - [ ] move repos that have been transferred to new owners
+            - [ ] handle default branch name renames
+            - [ ] handle repo/org renames
+            - [ ] for starred repos that become inaccessible, move to a starred/\_archive subdirectory
+            - [ ] repos that were unstarred should be moved to starred/\_unstarred for a final chance to review and manually delete
         - [ ] check set of local and remote branches against each other
     - [x] `status`
         - [x] `--wip` option: commit all dirty index changes to a new branch called e.g. `forgery-wip` and have a way to check any locals/remotes for existence of such branches 
