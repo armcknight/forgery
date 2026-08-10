@@ -1,0 +1,24 @@
+name: release
+
+# Delegates to armcknight/workflows' reusable SwiftPM cask-release pipeline:
+# builds, (optionally signs+notarizes), tarballs the binary, publishes to the
+# armcknight/homebrew-tools tap, and bumps Casks/forgery.rb (or forgery-rc.rb
+# for an RC tag). Requires TAP_RELEASE_TOKEN (Contents: read+write on the tap).
+# To turn on signing, set `sign: true` and add match-git-url + team-id inputs
+# plus the MATCH_* / NOTARY_* secrets.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+
+jobs:
+  release:
+    uses: armcknight/workflows/.github/workflows/swiftpm-cask-release.yml@1
+    with:
+      cask-name: forgery
+      binaries: forgery
+      version-file: Sources/forgery/main.swift
+      version-regex: '.*static let version = "([^"]+)".*'
+    secrets: inherit
