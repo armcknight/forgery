@@ -21,4 +21,6 @@ jobs:
       binaries: forgery
       version-file: Sources/forgery/main.swift
       version-regex: '.*static let version = "([^"]+)".*'
+      # octokit / git-kit / RequestKit are vendored as git submodules.
+      submodules: recursive
     secrets: inherit
