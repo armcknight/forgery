@@ -1,23 +1,24 @@
 import Foundation
-import ShellKit
+import Subprocess
+import System
 
-func shell(_ command: String, workingDirectory: String? = nil) -> String {
-    let task = Process()
-    task.launchPath = "/bin/bash"
-    task.arguments = ["-c", command]
+/// Maximum bytes collected from a shell invocation's combined output (16MB).
+private let maxShellOutput = 16 * 1024 * 1024
 
-    if let workingDirectory = workingDirectory {
-        task.currentDirectoryPath = workingDirectory
+func shell(_ command: String, workingDirectory: String? = nil) async -> String {
+    do {
+        let result = try await Subprocess.run(
+            .path("/bin/bash"),
+            arguments: ["-c", command],
+            workingDirectory: workingDirectory.map { FilePath($0) },
+            output: .string(limit: maxShellOutput),
+            error: .string(limit: maxShellOutput)
+        )
+        // The previous Process-based implementation merged stdout and stderr onto
+        // one pipe and returned whatever came back, regardless of exit status.
+        let combined = (result.standardOutput ?? "") + (result.standardError ?? "")
+        return combined.trimmingCharacters(in: .whitespacesAndNewlines)
+    } catch {
+        return ""
     }
-
-    let pipe = Pipe()
-    task.standardOutput = pipe
-    task.standardError = pipe
-
-    task.launch()
-
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output = String(data: data, encoding: .utf8) ?? ""
-
-    return output.trimmingCharacters(in: .whitespacesAndNewlines)
 }

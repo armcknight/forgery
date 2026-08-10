@@ -4,7 +4,7 @@ import GitKit
 import OctoKit
 import forgery_lib
 
-struct Clone: ParsableCommand {
+struct Clone: AsyncParsableCommand {
     @Argument(help: "The GitHub access token of the GitHub user whose repos should be synced.")
     var accessToken: String
 
@@ -24,7 +24,7 @@ struct Clone: ParsableCommand {
 }
 
 extension Clone {
-    mutating func run() throws {
+    mutating func run() async throws {
         logger.info("Starting clone...")
 
         if baseOptions.verbose {
@@ -34,9 +34,9 @@ extension Clone {
         let github = GitHub(accessToken: accessToken)
         
         if let organization = organization {
-            try github.cloneForOrganization(basePath: baseOptions.basePath, repoTypes: repoTypes.resolved, organization: organization)
+            try await github.cloneForOrganization(basePath: baseOptions.basePath, repoTypes: repoTypes.resolved, organization: organization)
         } else {
-            try github.cloneForUser(basePath: baseOptions.basePath, repoTypes: repoTypes.resolved, organization: organization, dedupeOrgReposCreatedByUser: dedupeOrgReposCreatedByUser)
+            try await github.cloneForUser(basePath: baseOptions.basePath, repoTypes: repoTypes.resolved, organization: organization, dedupeOrgReposCreatedByUser: dedupeOrgReposCreatedByUser)
         }
     }
 }

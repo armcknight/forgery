@@ -1,16 +1,15 @@
 import Foundation
 import GitKit
-import ShellKit
 
 /// Set default branch to pull from upstream remote but push to fork remote
-func setDefaultForkBranchRemotes(_ git: Git) throws {
-    let defaultBranch = try git.run(.revParse(abbrevRef: true, revision: "fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
-    try git.run(.writeConfig(name: "branch.\(defaultBranch).remote", value: "upstream"))
-    try git.run(.writeConfig(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
+func setDefaultForkBranchRemotes(_ git: Git) async throws {
+    let defaultBranch = try await git.run(.revParse(abbrevRef: true, revision: "fork/HEAD")).replacingOccurrences(of: "refs/remotes/fork/", with: "")
+    try await git.run(.writeConfig(name: "branch.\(defaultBranch).remote", value: "upstream"))
+    try await git.run(.writeConfig(name: "branch.\(defaultBranch).pushRemote", value: "fork"))
 }
 
 /// Clones a repo and then pulls down any submodules it may have.
-func cloneRepo(repoName: String, sshURL: String, cloneRoot: String) throws {
+func cloneRepo(repoName: String, sshURL: String, cloneRoot: String) async throws {
     let repoPath = ("\(cloneRoot)/\(repoName)" as NSString).expandingTildeInPath
     guard !FileManager.default.fileExists(atPath: repoPath) else {
         throw ForgeryError.Clone.Repo.alreadyCloned
@@ -18,16 +17,16 @@ func cloneRepo(repoName: String, sshURL: String, cloneRoot: String) throws {
     
     logger.info("Cloning \(sshURL) into \(repoName)...")
     var git = Git(path: cloneRoot)
-    try git.run(.clone(url: sshURL, dirName: repoName))
+    try await git.run(.clone(url: sshURL, dirName: repoName))
     if FileManager.default.fileExists(atPath: "\(repoPath)/.gitmodules") {
         git = Git(path: repoPath)
-        try git.run(.submoduleUpdate(init: true, recursive: true))
+        try await git.run(.submoduleUpdate(init: true, recursive: true))
     }
 }
 
-func remoteRepoExists(repoSSHURL: String) -> Bool {
+func remoteRepoExists(repoSSHURL: String) async -> Bool {
     do {
-        try Git().run(.lsRemote(url: repoSSHURL, limitToHeads: true))
+        try await Git().run(.lsRemote(url: repoSSHURL, limitToHeads: true))
         return true
     } catch {
         return false
@@ -140,26 +139,26 @@ extension RepoSummary: CustomStringConvertible {
     }
 }
 
-public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) throws -> IndexState {
+public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) async throws -> IndexState {
     let fullRepoPath = (repoPath as NSString).expandingTildeInPath
     logger.debug("Checking working index status of \(fullRepoPath)...")
     let git = Git(path: fullRepoPath)
 
-    let clean = try git.run(.status(short: true)).isEmpty
+    let clean = try await git.run(.status(short: true)).isEmpty
 
     guard !clean else { return .clean }
 
     guard !pushWIPChanges else {
-        try saveWIPChanges(repoPath: fullRepoPath)
+        try await saveWIPChanges(repoPath: fullRepoPath)
         return .pushedWIP
     }
 
     return .dirtyIndex
 }
 
-public func summarizeStatus(repoPath: String, pushWIPChanges: Bool) throws -> RepoSummary {
-    var state = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
-    let repositoryBranchInfo = try getBranchInfo(repoPath: repoPath)
+public func summarizeStatus(repoPath: String, pushWIPChanges: Bool) async throws -> RepoSummary {
+    var state = try await checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
+    let repositoryBranchInfo = try await getBranchInfo(repoPath: repoPath)
     
     // Add local-only branches indicator if any exist
     if repositoryBranchInfo.hasLocalOnlyBranches {
@@ -169,33 +168,33 @@ public func summarizeStatus(repoPath: String, pushWIPChanges: Bool) throws -> Re
     return RepoSummary(path: repoPath, status: state, repositoryBranchInfo: repositoryBranchInfo)
 }
 
-func saveWIPChanges(repoPath: String) throws {
+func saveWIPChanges(repoPath: String) async throws {
     let git = Git(path: repoPath)
 
     let branchName = "forgery-wip"
-    try git.run(.checkout(branch: branchName, create: true))
-    try git.run(.addAll)
+    try await git.run(.checkout(branch: branchName, create: true))
+    try await git.run(.addAll)
 
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
     let timestamp = dateFormatter.string(from: Date())
     let commitMessage = "wip on \(timestamp)"
-    try git.run(.commit(message: commitMessage))
+    try await git.run(.commit(message: commitMessage))
 
     // TODO: if this is a fork, push to remote named "fork" instead of "origin"
-    try git.run(.push())
+    try await git.run(.push())
 
     print("  ✓ Saved WIP changes to branch '\(branchName)'")
 }
 
-public func diffstat(repoPath: String) throws -> String {
+public func diffstat(repoPath: String) async throws -> String {
     let git = Git(path: repoPath)
-    return try git.run(.status())
+    return try await git.run(.status())
 }
 
-public func getBranchInfo(repoPath: String) throws -> RepositoryBranchInfo {
+public func getBranchInfo(repoPath: String) async throws -> RepositoryBranchInfo {
     let git = Git(path: repoPath)
-    let branchesOutput = try git.run(.raw("branch"))
+    let branchesOutput = try await git.run(.raw("branch"))
     let branchLines = branchesOutput.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
     
     var branches: [BranchInfo] = []
@@ -209,7 +208,7 @@ public func getBranchInfo(repoPath: String) throws -> RepositoryBranchInfo {
         
         do {
             // Check for upstream without checking out - use branch-specific revision syntax
-            let unpushedCommitsOutput = try git.run(.revList(count: true, revisions: "\(branchName)@{u}..\(branchName)"))
+            let unpushedCommitsOutput = try await git.run(.revList(count: true, revisions: "\(branchName)@{u}..\(branchName)"))
             let unpushedCommits = Int(unpushedCommitsOutput.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
             
             if unpushedCommits > 0 {

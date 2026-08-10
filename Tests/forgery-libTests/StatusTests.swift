@@ -27,9 +27,9 @@ class StatusTests: XCTestCase {
         super.tearDown()
     }
 
-    func testStarredRepositoryStructure() throws {
+    func testStarredRepositoryStructure() async throws {
         // Setup: Create starred repository structure
-        try createStarredRepoStructure()
+        try await createStarredRepoStructure()
         
         // Test: Get paths for a user and check starred repos are included
         let allReposOptions = allReposOptions()
@@ -46,9 +46,9 @@ class StatusTests: XCTestCase {
         XCTAssertEqual(userPaths.starredRepoPath, expectedStarredPath, "Starred repo path should match expected path")
     }
     
-    func testForkedRepositoryStructure() throws {
+    func testForkedRepositoryStructure() async throws {
         // Setup: Create forked repository structure
-        try createForkedRepoStructure()
+        try await createForkedRepoStructure()
         
         // Test: Get paths and verify forked repos are included via CommonPaths
         let allReposOptions = allReposOptions()
@@ -65,11 +65,11 @@ class StatusTests: XCTestCase {
         XCTAssertEqual(userPaths.commonPaths.repoPaths.forkPath, expectedForkedPath, "Forked repo path should match expected path")
     }
     
-    func testDirectoryStructureDetection() throws {
+    func testDirectoryStructureDetection() async throws {
         // Setup: Create mixed repository structure
-        try createStarredRepoStructure()
-        try createForkedRepoStructure()
-        try createRegularRepoStructure()
+        try await createStarredRepoStructure()
+        try await createForkedRepoStructure()
+        try await createRegularRepoStructure()
         
         // Test: Verify that starred and forked paths are detected correctly
         let starredPath = "\(tempDirectory!)/user/testuser/repos/starred"
@@ -99,11 +99,11 @@ class StatusTests: XCTestCase {
         XCTAssertTrue(publicContents.contains("my-blog"), "Public path should contain my-blog directly")
     }
     
-    func testGitRepositoriesExist() throws {
+    func testGitRepositoriesExist() async throws {
         // Setup: Create test repositories
-        try createStarredRepoStructure()
-        try createForkedRepoStructure()
-        try createRegularRepoStructure()
+        try await createStarredRepoStructure()
+        try await createForkedRepoStructure()
+        try await createRegularRepoStructure()
         
         // Test: Verify .git directories exist in the correct locations
         let testPaths = [
@@ -120,7 +120,7 @@ class StatusTests: XCTestCase {
         }
     }
     
-    func testRepoTypeFiltering() throws {
+    func testRepoTypeFiltering() async throws {
         // Test: Verify that repo type filtering works correctly
         let repoTypesNoStarred = RepoTypeOptions.Resolved(
             noRepos: false, noForkedRepos: false, noStarredRepos: true, noPublicRepos: false, noPrivateRepos: false,
@@ -153,53 +153,53 @@ private extension StatusTests {
     }
 
     /// Creates a git repository at the specified path
-    func createGitRepo(at path: String, withFile fileName: String = "test.txt", content: String = "test") throws {
+    func createGitRepo(at path: String, withFile fileName: String = "test.txt", content: String = "test") async throws {
         try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
 
         let git = Git(path: path)
-        try git.run(.raw("init"))
-        try git.run(.raw("config user.name 'Test User'"))
-        try git.run(.raw("config user.email 'test@example.com'"))
+        try await git.run(.raw("init"))
+        try await git.run(.raw("config user.name 'Test User'"))
+        try await git.run(.raw("config user.email 'test@example.com'"))
 
         // Create a test file
         let filePath = "\(path)/\(fileName)"
         try content.write(toFile: filePath, atomically: true, encoding: .utf8)
 
-        try git.run(.addAll)
-        try git.run(.commit(message: "Initial commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
     }
 
     /// Creates a directory structure for starred repositories
-    func createStarredRepoStructure() throws {
+    func createStarredRepoStructure() async throws {
         // Create starred repos: basePath/user/username/repos/starred/owner/repo
         let starredPath = "\(tempDirectory!)/user/testuser/repos/starred"
 
         // Create multiple owners with repos
-        try createGitRepo(at: "\(starredPath)/owner1/awesome-repo")
-        try createGitRepo(at: "\(starredPath)/owner1/another-repo", withFile: "README.md", content: "# Another Repo")
-        try createGitRepo(at: "\(starredPath)/owner2/cool-project")
-        try createGitRepo(at: "\(starredPath)/github/swift", withFile: "Package.swift", content: "// Swift package")
+        try await createGitRepo(at: "\(starredPath)/owner1/awesome-repo")
+        try await createGitRepo(at: "\(starredPath)/owner1/another-repo", withFile: "README.md", content: "# Another Repo")
+        try await createGitRepo(at: "\(starredPath)/owner2/cool-project")
+        try await createGitRepo(at: "\(starredPath)/github/swift", withFile: "Package.swift", content: "// Swift package")
     }
 
     /// Creates a directory structure for forked repositories
-    func createForkedRepoStructure() throws {
+    func createForkedRepoStructure() async throws {
         // Create forked repos: basePath/user/username/repos/forked/owner/repo
         let forkedPath = "\(tempDirectory!)/user/testuser/repos/forked"
 
         // Create multiple owners with repos
-        try createGitRepo(at: "\(forkedPath)/apache/kafka")
-        try createGitRepo(at: "\(forkedPath)/facebook/react", withFile: "index.js", content: "console.log('Hello React');")
-        try createGitRepo(at: "\(forkedPath)/microsoft/vscode")
+        try await createGitRepo(at: "\(forkedPath)/apache/kafka")
+        try await createGitRepo(at: "\(forkedPath)/facebook/react", withFile: "index.js", content: "console.log('Hello React');")
+        try await createGitRepo(at: "\(forkedPath)/microsoft/vscode")
     }
 
     /// Creates a directory structure for regular (public/private) repositories
-    func createRegularRepoStructure() throws {
+    func createRegularRepoStructure() async throws {
         // Create regular repos: basePath/user/username/repos/public/repo (no owner level)
         let publicPath = "\(tempDirectory!)/user/testuser/repos/public"
         let privatePath = "\(tempDirectory!)/user/testuser/repos/private"
 
-        try createGitRepo(at: "\(publicPath)/my-public-repo")
-        try createGitRepo(at: "\(publicPath)/my-blog", withFile: "index.html", content: "<h1>My Blog</h1>")
-        try createGitRepo(at: "\(privatePath)/my-private-repo")
+        try await createGitRepo(at: "\(publicPath)/my-public-repo")
+        try await createGitRepo(at: "\(publicPath)/my-blog", withFile: "index.html", content: "<h1>My Blog</h1>")
+        try await createGitRepo(at: "\(privatePath)/my-private-repo")
     }
 }

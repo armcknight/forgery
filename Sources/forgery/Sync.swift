@@ -3,7 +3,7 @@ import Foundation
 import OctoKit
 import forgery_lib
 
-struct Sync: ParsableCommand {
+struct Sync: AsyncParsableCommand {
     @Argument(help: "The GitHub access token of the GitHub user whose repos should be synced.")
     var accessToken: String
 
@@ -38,9 +38,9 @@ struct Sync: ParsableCommand {
         (basePath as NSString).expandingTildeInPath
     }
 
-    func run() throws {
+    func run() async throws {
         if pushWIP {
-            try processWIPChanges()
+            try await processWIPChanges()
         } else {
             let githubClient = GitHub(accessToken: accessToken)
             
@@ -49,7 +49,7 @@ struct Sync: ParsableCommand {
             Task {
                 do {
                     let remoteRepos = try githubClient.getRepos(ownedBy: user.login).map { $0 }
-                    githubClient.updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
+                    await githubClient.updateLocalReposUnder(path: userDir, remoteRepoList: remoteRepos, pushToForkRemotes: pushToForkRemotes, prune: prune, pullWithRebase: pullWithRebase, pushAfterRebase: pushAfterRebase, rebaseSubmodules: rebaseSubmodules)
                 } catch {
                     logger.error("Error fetching repositories: \(error)")
                 }
@@ -57,31 +57,31 @@ struct Sync: ParsableCommand {
         }
     }
 
-    private func processWIPChanges() throws {
+    private func processWIPChanges() async throws {
         var repoSummaries = [RepoSummary]()
 
         if let organization = userTypes.organization {
-            repoSummaries = try checkForOrganization(organization: organization)
+            repoSummaries = try await checkForOrganization(organization: organization)
         } else if let user = userTypes.user {
-            repoSummaries = try checkForUsername(username: user)
+            repoSummaries = try await checkForUsername(username: user)
         } else if userTypes.all {
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
-                repoSummaries.append(contentsOf: try checkForUsername(username: username))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
+                repoSummaries.append(contentsOf: try await checkForUsername(username: username))
             }
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
-                repoSummaries.append(contentsOf: try checkForOrganization(organization: organization))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
+                repoSummaries.append(contentsOf: try await checkForOrganization(organization: organization))
             }
         } else if userTypes.allUsers {
             if userTypes.allOrgs {
                 throw ForgeryError.Status.useAll
             }
 
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
-                repoSummaries.append(contentsOf: try checkForUsername(username: username))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
+                repoSummaries.append(contentsOf: try await checkForUsername(username: username))
             }
         } else if userTypes.allOrgs {
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
-                repoSummaries.append(contentsOf: try checkForOrganization(organization: organization))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
+                repoSummaries.append(contentsOf: try await checkForOrganization(organization: organization))
             }
         } else {
             throw ForgeryError.Status.invalidOption
@@ -98,27 +98,27 @@ struct Sync: ParsableCommand {
         }
     }
 
-    private func iterateOverSubdirectories(path: String, block: (String) throws -> Void) throws {
+    private func iterateOverSubdirectories(path: String, block: (String) async throws -> Void) async throws {
         guard FileManager.default.fileExists(atPath: path) else {
             throw ForgeryError.Status.pathDoesNotExist
         }
 
         for case let subdirectory in try FileManager.default.contentsOfDirectory(atPath: path) {
-            try block(subdirectory)
+            try await block(subdirectory)
         }
     }
 
-    private func checkForUsername(username: String) throws -> [RepoSummary] {
+    private func checkForUsername(username: String) async throws -> [RepoSummary] {
         let userPaths = try UserPaths(basePath: basePath, username: username, repoTypes: repoTypes.resolved, createOnDisk: false)
-        return try checkRepos(pathsToCheck: userPaths.validPaths)
+        return try await checkRepos(pathsToCheck: userPaths.validPaths)
     }
 
-    private func checkForOrganization(organization: String) throws -> [RepoSummary] {
+    private func checkForOrganization(organization: String) async throws -> [RepoSummary] {
         let orgPaths = try CommonPaths(basePath: basePath, orgName: organization, repoTypes: repoTypes.resolved, createOnDisk: false)
-        return try checkRepos(pathsToCheck: orgPaths.validPaths)
+        return try await checkRepos(pathsToCheck: orgPaths.validPaths)
     }
 
-    private func checkRepos(pathsToCheck: [String]) throws -> [RepoSummary] {
+    private func checkRepos(pathsToCheck: [String]) async throws -> [RepoSummary] {
         var reposWithWork: [RepoSummary] = []
         let fileManager = FileManager.default
         for path in pathsToCheck {
@@ -161,7 +161,7 @@ struct Sync: ParsableCommand {
                             continue
                         }
 
-                        let repoSummary = try summarizeStatus(repoPath: fullActualRepoPath, pushWIPChanges: true)
+                        let repoSummary = try await summarizeStatus(repoPath: fullActualRepoPath, pushWIPChanges: true)
                         if repoSummary.status.contains(.pushedWIP) {
                             reposWithWork.append(repoSummary)
                         }
@@ -174,7 +174,7 @@ struct Sync: ParsableCommand {
                         continue
                     }
 
-                    let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: true)
+                    let repoSummary = try await summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: true)
                     if repoSummary.status.contains(.pushedWIP) {
                         reposWithWork.append(repoSummary)
                     }

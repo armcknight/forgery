@@ -31,9 +31,9 @@ class StatusCommandTests: XCTestCase {
     
     // MARK: - Tests for Directory Structure Handling
     
-    func testRegularRepoDirectoryHandling() throws {
+    func testRegularRepoDirectoryHandling() async throws {
         // Setup: Create regular repos with direct structure
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/public/test-repo", hasUncommittedChanges: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/public/test-repo", hasUncommittedChanges: true)
         
         // Get the paths that would be checked by Status command
         let allReposOptions = allReposOptions()
@@ -55,9 +55,9 @@ class StatusCommandTests: XCTestCase {
         XCTAssertTrue(fileManager.fileExists(atPath: gitPath), "Git repo should exist at expected path")
     }
     
-    func testStarredRepoDirectoryHandling() throws {
+    func testStarredRepoDirectoryHandling() async throws {
         // Setup: Create starred repos with owner/repo structure
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner/test-starred-repo", hasUncommittedChanges: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner/test-starred-repo", hasUncommittedChanges: true)
         
         // Get the paths that would be checked by Status command
         let allReposOptions = allReposOptions()
@@ -83,9 +83,9 @@ class StatusCommandTests: XCTestCase {
         XCTAssertTrue(fileManager.fileExists(atPath: ownerPath), "Owner directory should exist in starred path")
     }
     
-    func testForkedRepoDirectoryHandling() throws {
+    func testForkedRepoDirectoryHandling() async throws {
         // Setup: Create forked repos with owner/repo structure  
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream/test-forked-repo", hasUncommittedChanges: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream/test-forked-repo", hasUncommittedChanges: true)
         
         // Get the paths that would be checked by Status command
         let allReposOptions = allReposOptions()
@@ -107,9 +107,9 @@ class StatusCommandTests: XCTestCase {
         XCTAssertTrue(fileManager.fileExists(atPath: gitPath), "Forked git repo should exist at owner/repo path")
     }
     
-    func testMixedDirectoryStructures() throws {
+    func testMixedDirectoryStructures() async throws {
         // Setup: Create complete test directory structure
-        try createTestDirectoryStructure()
+        try await createTestDirectoryStructure()
         
         // Get all valid paths that Status command would check
         let allReposOptions = allReposOptions()
@@ -140,67 +140,67 @@ class StatusCommandTests: XCTestCase {
     
     // MARK: - Tests for Status Detection
     
-    func testLocalOnlyBranchDetection() throws {
+    func testLocalOnlyBranchDetection() async throws {
         // Setup: Create repo with local-only branch (no upstream)
         let repoPath = "\(tempDirectory!)/local-only-test"
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try git.run(.raw("init"))
-        try git.run(.raw("config user.name 'Test User'"))
-        try git.run(.raw("config user.email 'test@example.com'"))
+        try await git.run(.raw("init"))
+        try await git.run(.raw("config user.name 'Test User'"))
+        try await git.run(.raw("config user.email 'test@example.com'"))
         
         // Create initial commit on main
         try "initial".write(toFile: "\(repoPath)/initial.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Initial commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
         
         // Create local-only branch
-        try git.run(.checkout(branch: "feature-branch", create: true))
+        try await git.run(.checkout(branch: "feature-branch", create: true))
         try "feature".write(toFile: "\(repoPath)/feature.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Feature commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Feature commit", allowEmpty: false))
         
         // Test: Get branch info
-        let branchInfo = try getBranchInfo(repoPath: repoPath)
+        let branchInfo = try await getBranchInfo(repoPath: repoPath)
         
         XCTAssertTrue(branchInfo.localOnlyBranches.contains { $0.name == "feature-branch" }, "feature-branch should be detected as local-only")
         XCTAssertTrue(branchInfo.localOnlyBranches.contains { $0.name == "main" }, "main should be detected as local-only (no remote)")
         XCTAssertEqual(branchInfo.branchesWithUnpushedCommits.count, 0, "Should have no unpushed branches (no upstreams configured)")
         
         // Test: Repository summary should include local-only indicator
-        let summary = try summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
+        let summary = try await summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
         XCTAssertTrue(summary.status.contains(.localOnlyBranches), "Summary should indicate local-only branches")
         XCTAssertTrue(summary.description.contains("L"), "Status description should include L indicator")
         XCTAssertEqual(summary.localOnlyBranches.count, 2, "Should have 2 local-only branches")
     }
     
-    func testMixedStatusIndicators() throws {
+    func testMixedStatusIndicators() async throws {
         // Setup: Create repo with both uncommitted changes and local-only branches
         let repoPath = "\(tempDirectory!)/mixed-status-test"
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try git.run(.raw("init"))
-        try git.run(.raw("config user.name 'Test User'"))
-        try git.run(.raw("config user.email 'test@example.com'"))
+        try await git.run(.raw("init"))
+        try await git.run(.raw("config user.name 'Test User'"))
+        try await git.run(.raw("config user.email 'test@example.com'"))
         
         // Create initial commit
         try "initial".write(toFile: "\(repoPath)/initial.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Initial commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
         
         // Create local-only branch
-        try git.run(.checkout(branch: "local-feature", create: true))
+        try await git.run(.checkout(branch: "local-feature", create: true))
         try "feature".write(toFile: "\(repoPath)/feature.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Feature commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Feature commit", allowEmpty: false))
         
         // Create uncommitted changes
         try "modified".write(toFile: "\(repoPath)/modified.txt", atomically: true, encoding: .utf8)
         
         // Test: Repository summary should include both indicators
-        let summary = try summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
+        let summary = try await summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
         
         XCTAssertTrue(summary.status.contains(.dirtyIndex), "Summary should indicate dirty index")
         XCTAssertTrue(summary.status.contains(.localOnlyBranches), "Summary should indicate local-only branches")
@@ -209,29 +209,29 @@ class StatusCommandTests: XCTestCase {
         XCTAssertEqual(summary.description, "ML", "Status should show ML for modifications and local-only branches")
     }
     
-    func testMutualExclusivityOfPAndL() throws {
+    func testMutualExclusivityOfPAndL() async throws {
         // Setup: Create repo with both types of branches to verify P and L logic
         let repoPath = "\(tempDirectory!)/mutual-exclusivity-test"
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try git.run(.raw("init"))
-        try git.run(.raw("config user.name 'Test User'"))
-        try git.run(.raw("config user.email 'test@example.com'"))
+        try await git.run(.raw("init"))
+        try await git.run(.raw("config user.name 'Test User'"))
+        try await git.run(.raw("config user.email 'test@example.com'"))
         
         // Create initial commit on main
         try "initial".write(toFile: "\(repoPath)/initial.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Initial commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
         
         // Create a local-only branch
-        try git.run(.checkout(branch: "local-feature", create: true))
+        try await git.run(.checkout(branch: "local-feature", create: true))
         try "feature".write(toFile: "\(repoPath)/feature.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Feature commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Feature commit", allowEmpty: false))
         
         // Test: Get branch info - all branches should be local-only since no remotes exist
-        let branchInfo = try getBranchInfo(repoPath: repoPath)
+        let branchInfo = try await getBranchInfo(repoPath: repoPath)
         
         XCTAssertEqual(branchInfo.branchesWithUnpushedCommits.count, 0, "Should have no unpushed branches when no upstreams exist")
         XCTAssertGreaterThan(branchInfo.localOnlyBranches.count, 0, "Should have local-only branches")
@@ -239,7 +239,7 @@ class StatusCommandTests: XCTestCase {
         XCTAssertTrue(branchInfo.localOnlyBranches.contains { $0.name == "local-feature" }, "local-feature should be local-only")
         
         // A repository can only have P OR L, never both, since they represent different branch states
-        let summary = try summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
+        let summary = try await summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
         if summary.status.contains(.localOnlyBranches) {
             XCTAssertEqual(summary.repositoryBranchInfo.branchesWithUnpushedCommits.count, 0, "If repo has local-only branches, it should have no unpushed branches")
         }
@@ -248,37 +248,37 @@ class StatusCommandTests: XCTestCase {
         }
     }
     
-    func testDetailedBranchReporting() throws {
+    func testDetailedBranchReporting() async throws {
         // Setup: Create repo with multiple branches in different states
         let repoPath = "\(tempDirectory!)/detailed-branch-test"
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try git.run(.raw("init"))
-        try git.run(.raw("config user.name 'Test User'"))
-        try git.run(.raw("config user.email 'test@example.com'"))
+        try await git.run(.raw("init"))
+        try await git.run(.raw("config user.name 'Test User'"))
+        try await git.run(.raw("config user.email 'test@example.com'"))
         
         // Create initial commit on main
         try "initial".write(toFile: "\(repoPath)/initial.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Initial commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
         
         // Create multiple local-only branches
-        try git.run(.checkout(branch: "feature-1", create: true))
+        try await git.run(.checkout(branch: "feature-1", create: true))
         try "feature1".write(toFile: "\(repoPath)/feature1.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Feature 1 commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Feature 1 commit", allowEmpty: false))
         
-        try git.run(.checkout(branch: "feature-2", create: true))
+        try await git.run(.checkout(branch: "feature-2", create: true))
         try "feature2".write(toFile: "\(repoPath)/feature2.txt", atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Feature 2 commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Feature 2 commit", allowEmpty: false))
         
         // Switch back to main for testing
-        try git.run(.checkout(branch: "main"))
+        try await git.run(.checkout(branch: "main"))
         
         // Test: Get detailed branch info
-        let repositoryBranchInfo = try getBranchInfo(repoPath: repoPath)
+        let repositoryBranchInfo = try await getBranchInfo(repoPath: repoPath)
         
         XCTAssertEqual(repositoryBranchInfo.branches.count, 3, "Should find all 3 branches")
         
@@ -303,58 +303,58 @@ class StatusCommandTests: XCTestCase {
         XCTAssertEqual(repositoryBranchInfo.localOnlyBranches.count, 3, "All 3 branches should be local-only")
         
         // Test: Repository summary should reflect branch status
-        let summary = try summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
+        let summary = try await summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
         XCTAssertTrue(summary.status.contains(.localOnlyBranches), "Summary should indicate local-only branches")
         XCTAssertEqual(summary.description, "L", "Status should show L for local-only branches")
         XCTAssertEqual(summary.localOnlyBranches.count, 3, "Should have 3 local-only branches")
     }
     
-    func testUncommittedChangesDetection() throws {
+    func testUncommittedChangesDetection() async throws {
         // Setup: Create repo with uncommitted changes
         let repoPath = "\(tempDirectory!)/test-repo"
-        try createGitRepoWithChanges(at: repoPath, hasUncommittedChanges: true)
+        try await createGitRepoWithChanges(at: repoPath, hasUncommittedChanges: true)
         
         // Test: Check the working index status
-        let status = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: false)
+        let status = try await checkWorkingIndex(repoPath: repoPath, pushWIPChanges: false)
         
         XCTAssertTrue(status.contains(.dirtyIndex), "Repository with uncommitted changes should have dirty index status")
         XCTAssertFalse(status.contains(.clean), "Repository with uncommitted changes should not be clean")
     }
     
-    func testCleanRepoDetection() throws {
+    func testCleanRepoDetection() async throws {
         // Setup: Create clean repo
         let repoPath = "\(tempDirectory!)/clean-repo"
-        try createGitRepoWithChanges(at: repoPath, hasUncommittedChanges: false)
+        try await createGitRepoWithChanges(at: repoPath, hasUncommittedChanges: false)
         
         // Test: Check the working index status
-        let status = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: false)
+        let status = try await checkWorkingIndex(repoPath: repoPath, pushWIPChanges: false)
         
         XCTAssertTrue(status.contains(.clean), "Clean repository should have clean status")
         XCTAssertFalse(status.contains(.dirtyIndex), "Clean repository should not have dirty index")
     }
     
-    func testRepoSummarization() throws {
+    func testRepoSummarization() async throws {
         // Setup: Create repo with uncommitted changes (but no upstream to avoid git errors)
         let repoPath = "\(tempDirectory!)/summary-test-repo"
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try git.run(.raw("init"))
-        try git.run(.raw("config user.name 'Test User'"))
-        try git.run(.raw("config user.email 'test@example.com'"))
+        try await git.run(.raw("init"))
+        try await git.run(.raw("config user.name 'Test User'"))
+        try await git.run(.raw("config user.email 'test@example.com'"))
         
         // Create initial commit
         let initialFilePath = "\(repoPath)/initial.txt"
         try "initial content".write(toFile: initialFilePath, atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Initial commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
         
         // Create uncommitted changes
         let modifiedFilePath = "\(repoPath)/modified.txt"
         try "modified content".write(toFile: modifiedFilePath, atomically: true, encoding: .utf8)
         
         // Test: Create repository summary
-        let summary = try summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
+        let summary = try await summarizeStatus(repoPath: repoPath, pushWIPChanges: false)
         
         XCTAssertEqual(summary.path, repoPath, "Summary should contain the correct repo path")
         XCTAssertTrue(summary.status.contains(.dirtyIndex), "Summary should indicate dirty index")
@@ -363,7 +363,7 @@ class StatusCommandTests: XCTestCase {
     
     // MARK: - Integration Tests
     
-    func testCompleteStatusFlow() throws {
+    func testCompleteStatusFlow() async throws {
         // This test simulates what the Status command would do:
         // 1. Get valid paths for a user
         // 2. Check each path for repositories
@@ -371,7 +371,7 @@ class StatusCommandTests: XCTestCase {
         // 4. Summarize status for each repo found
         
         // Setup: Create complete directory structure
-        try createTestDirectoryStructure()
+        try await createTestDirectoryStructure()
         
         // Get paths like Status command would
         let allReposOptions = allReposOptions()
@@ -442,26 +442,26 @@ private extension StatusCommandTests {
     }
 
     /// Creates a git repository with modifications to test status reporting
-    func createGitRepoWithChanges(at path: String, hasUncommittedChanges: Bool = false, hasUnpushedCommits: Bool = false) throws {
+    func createGitRepoWithChanges(at path: String, hasUncommittedChanges: Bool = false, hasUnpushedCommits: Bool = false) async throws {
         try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
 
         let git = Git(path: path)
-        try git.run(.raw("init"))
-        try git.run(.raw("config user.name 'Test User'"))
-        try git.run(.raw("config user.email 'test@example.com'"))
+        try await git.run(.raw("init"))
+        try await git.run(.raw("config user.name 'Test User'"))
+        try await git.run(.raw("config user.email 'test@example.com'"))
 
         // Create initial commit
         let initialFilePath = "\(path)/initial.txt"
         try "initial content".write(toFile: initialFilePath, atomically: true, encoding: .utf8)
-        try git.run(.addAll)
-        try git.run(.commit(message: "Initial commit", allowEmpty: false))
+        try await git.run(.addAll)
+        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
 
         if hasUnpushedCommits {
             // Create additional commits that haven't been pushed
             let unpushedFilePath = "\(path)/unpushed.txt"
             try "unpushed content".write(toFile: unpushedFilePath, atomically: true, encoding: .utf8)
-            try git.run(.addAll)
-            try git.run(.commit(message: "Unpushed commit", allowEmpty: false))
+            try await git.run(.addAll)
+            try await git.run(.commit(message: "Unpushed commit", allowEmpty: false))
         }
 
         if hasUncommittedChanges {
@@ -472,20 +472,20 @@ private extension StatusCommandTests {
     }
 
     /// Creates a complete directory structure for testing
-    func createTestDirectoryStructure() throws {
+    func createTestDirectoryStructure() async throws {
         // Create regular repos (direct structure)
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/public/clean-repo")
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/public/dirty-repo", hasUncommittedChanges: true)
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/private/unpushed-repo", hasUnpushedCommits: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/public/clean-repo")
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/public/dirty-repo", hasUncommittedChanges: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/private/unpushed-repo", hasUnpushedCommits: true)
 
         // Create starred repos (owner/repo structure)
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner1/starred-clean")
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner1/starred-dirty", hasUncommittedChanges: true)
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner2/starred-unpushed", hasUnpushedCommits: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner1/starred-clean")
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner1/starred-dirty", hasUncommittedChanges: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/starred/owner2/starred-unpushed", hasUnpushedCommits: true)
 
         // Create forked repos (owner/repo structure)
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream1/forked-clean")
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream1/forked-dirty", hasUncommittedChanges: true)
-        try createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream2/forked-both", hasUncommittedChanges: true, hasUnpushedCommits: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream1/forked-clean")
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream1/forked-dirty", hasUncommittedChanges: true)
+        try await createGitRepoWithChanges(at: "\(tempDirectory!)/user/testuser/repos/forked/upstream2/forked-both", hasUncommittedChanges: true, hasUnpushedCommits: true)
     }
 }

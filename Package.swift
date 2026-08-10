@@ -5,7 +5,8 @@ import PackageDescription
 let package = Package(
     name: "forgery",
     platforms: [
-        .macOS(.v12),
+        // swift-subprocess (via git-kit 2.0) declares a floor of macOS 13.
+        .macOS(.v13),
     ],
     products: [
         .executable(name: "forgery", targets: ["forgery"]),
@@ -16,7 +17,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.0.0"),
         .package(name: "git-kit", path: "git-kit"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
-        .package(url: "https://github.com/binarybirds/shell-kit", from: "1.0.0"),
+        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "0.4.0"),
     ],
     targets: [
         .executableTarget(
@@ -31,7 +32,7 @@ let package = Package(
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
             .product(name: "GitKit", package: "git-kit"),
             .product(name: "Logging", package: "swift-log"),
-            .product(name: "ShellKit", package: "shell-kit"),
+            .product(name: "Subprocess", package: "swift-subprocess"),
         ]
         ),
         .testTarget(

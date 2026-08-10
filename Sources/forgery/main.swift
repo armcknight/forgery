@@ -11,11 +11,11 @@ struct BaseOptions: ParsableArguments {
     var verbose: Bool = false
 }
 
-struct Forgery: ParsableCommand {
+struct Forgery: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         subcommands: [Status.self, Sync.self, Clone.self],
         defaultSubcommand: Status.self
     )
 }
 
-Forgery.main()
+await Forgery.main()

@@ -22,7 +22,7 @@ struct UserTypes: ParsableArguments {
     var all: Bool = false
 }
 
-struct Status: ParsableCommand {
+struct Status: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Shows the status of all repositories in the given directory",
         discussion: """
@@ -59,7 +59,7 @@ struct Status: ParsableCommand {
         (baseOptions.basePath as NSString).expandingTildeInPath
     }
 
-    func run() throws {
+    func run() async throws {
         if baseOptions.verbose {
             logger.logLevel = .debug
         }
@@ -67,56 +67,56 @@ struct Status: ParsableCommand {
         var repoSummaries = [RepoSummary]()
 
         if let organization = userTypes.organization {
-            repoSummaries = try checkForOrganization(organization: organization)
+            repoSummaries = try await checkForOrganization(organization: organization)
         } else if let user = userTypes.user {
-            repoSummaries = try checkForUsername(username: user)
+            repoSummaries = try await checkForUsername(username: user)
         } else if userTypes.all {
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
-                repoSummaries.append(contentsOf: try checkForUsername(username: username))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
+                repoSummaries.append(contentsOf: try await checkForUsername(username: username))
             }
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
-                repoSummaries.append(contentsOf: try checkForOrganization(organization: organization))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
+                repoSummaries.append(contentsOf: try await checkForOrganization(organization: organization))
             }
         } else if userTypes.allUsers {
             if userTypes.allOrgs {
                 throw ForgeryError.Status.useAll
             }
 
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
-                repoSummaries.append(contentsOf: try checkForUsername(username: username))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
+                repoSummaries.append(contentsOf: try await checkForUsername(username: username))
             }
         } else if userTypes.allOrgs {
-            try iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
-                repoSummaries.append(contentsOf: try checkForOrganization(organization: organization))
+            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
+                repoSummaries.append(contentsOf: try await checkForOrganization(organization: organization))
             }
         } else {
             throw ForgeryError.Status.invalidOption
         }
 
-        try printSummary(reposWithWork: repoSummaries)
+        try await printSummary(reposWithWork: repoSummaries)
     }
 
-    private func iterateOverSubdirectories(path: String, block: (String) throws -> Void) throws {
+    private func iterateOverSubdirectories(path: String, block: (String) async throws -> Void) async throws {
         guard FileManager.default.fileExists(atPath: path) else {
             throw ForgeryError.Status.pathDoesNotExist
         }
 
         for case let subdirectory in try FileManager.default.contentsOfDirectory(atPath: path) {
-            try block(subdirectory)
+            try await block(subdirectory)
         }
     }
 
-    private func checkForUsername(username: String) throws -> [RepoSummary] {
+    private func checkForUsername(username: String) async throws -> [RepoSummary] {
         let userPaths = try UserPaths(basePath: baseOptions.basePath, username: username, repoTypes: repoTypes.resolved, createOnDisk: false)
-        return try checkRepos(pathsToCheck: userPaths.validPaths)
+        return try await checkRepos(pathsToCheck: userPaths.validPaths)
     }
 
-    private func checkForOrganization(organization: String) throws -> [RepoSummary] {
+    private func checkForOrganization(organization: String) async throws -> [RepoSummary] {
         let orgPaths = try CommonPaths(basePath: baseOptions.basePath, orgName: organization, repoTypes: repoTypes.resolved, createOnDisk: false)
-        return try checkRepos(pathsToCheck: orgPaths.validPaths)
+        return try await checkRepos(pathsToCheck: orgPaths.validPaths)
     }
 
-    private func checkRepos(pathsToCheck: [String]) throws -> [RepoSummary] {
+    private func checkRepos(pathsToCheck: [String]) async throws -> [RepoSummary] {
         var reposWithWork: [RepoSummary] = []
         let fileManager = FileManager.default
         for path in pathsToCheck {
@@ -159,7 +159,7 @@ struct Status: ParsableCommand {
                             continue
                         }
 
-                        let repoSummary = try summarizeStatus(repoPath: fullActualRepoPath, pushWIPChanges: false)
+                        let repoSummary = try await summarizeStatus(repoPath: fullActualRepoPath, pushWIPChanges: false)
                         if repoSummary.needsReport {
                             reposWithWork.append(repoSummary)
                         }
@@ -172,7 +172,7 @@ struct Status: ParsableCommand {
                         continue
                     }
 
-                    let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: false)
+                    let repoSummary = try await summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: false)
                     if repoSummary.needsReport {
                         reposWithWork.append(repoSummary)
                     }
@@ -182,7 +182,7 @@ struct Status: ParsableCommand {
         return reposWithWork
     }
 
-    private func printSummary(reposWithWork: [RepoSummary]) throws {
+    private func printSummary(reposWithWork: [RepoSummary]) async throws {
         guard !reposWithWork.isEmpty else {
             print("\nAll repositories are clean and up to date!")
             return
@@ -192,31 +192,31 @@ struct Status: ParsableCommand {
         let unpushedRepos = reposWithWork.filter { !$0.branchInfo.isEmpty }
         let localOnlyRepos = reposWithWork.filter { $0.status.contains(.localOnlyBranches) }
 
-        try printReposByType(modifiedRepos, title: "Repositories with uncommitted changes", dirty: true, unpushed: false)
-        try printReposByType(unpushedRepos, title: "Repositories with unpushed commits on branches", dirty: false, unpushed: true)
-        try printReposByType(localOnlyRepos, title: "Repositories with local-only branches", dirty: false, unpushed: false, localOnly: true)
+        try await printReposByType(modifiedRepos, title: "Repositories with uncommitted changes", dirty: true, unpushed: false)
+        try await printReposByType(unpushedRepos, title: "Repositories with unpushed commits on branches", dirty: false, unpushed: true)
+        try await printReposByType(localOnlyRepos, title: "Repositories with local-only branches", dirty: false, unpushed: false, localOnly: true)
     }
 
-    private func printReposByType(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool, localOnly: Bool = false) throws {
+    private func printReposByType(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool, localOnly: Bool = false) async throws {
         guard !repos.isEmpty else { return }
         print("\n\(title):")
-        try printRepoGroup(repos.filter { $0.path.contains("repos/public/") }, title: "Public Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
-        try printRepoGroup(repos.filter { $0.path.contains("repos/private/") }, title: "Private Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
-        try printRepoGroup(repos.filter { $0.path.contains("repos/forks/") }, title: "Forked Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
-        try printRepoGroup(repos.filter { $0.path.contains("repos/starred/") }, title: "Starred Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/public/") }, title: "Public Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/private/") }, title: "Private Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/forks/") }, title: "Forked Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/starred/") }, title: "Starred Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("repos/public/") }, title: "Public Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("repos/private/") }, title: "Private Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("repos/forks/") }, title: "Forked Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("repos/starred/") }, title: "Starred Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("gists/public/") }, title: "Public Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("gists/private/") }, title: "Private Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("gists/forks/") }, title: "Forked Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try await printRepoGroup(repos.filter { $0.path.contains("gists/starred/") }, title: "Starred Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
     }
 
-    private func printRepoGroup(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool, localOnly: Bool = false) throws {
+    private func printRepoGroup(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool, localOnly: Bool = false) async throws {
         guard !repos.isEmpty else { return }
         print("\t\(title):")
         for repo in repos.sorted(by: { $0.path.components(separatedBy: "/").last! < $1.path.components(separatedBy: "/").last! }) {
             print("\t\t[\(repo.description)] \(repo.path)")
             if dirty {
-                print(try diffstat(repoPath: repo.path).split(separator: "\n").map({ "\t\t\t\($0)" }).joined(separator: "\n"))
+                print(try await diffstat(repoPath: repo.path).split(separator: "\n").map({ "\t\t\t\($0)" }).joined(separator: "\n"))
             } else if unpushed {
                 for branch in repo.repositoryBranchInfo.branchesWithUnpushedCommits {
                     if case .unpushedCommits(let count) = branch.status {
