@@ -146,7 +146,7 @@ class StatusCommandTests: XCTestCase {
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try await git.run(.raw("init"))
+        try await git.run(.raw("init -b main"))
         try await git.run(.raw("config user.name 'Test User'"))
         try await git.run(.raw("config user.email 'test@example.com'"))
         
@@ -181,7 +181,7 @@ class StatusCommandTests: XCTestCase {
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try await git.run(.raw("init"))
+        try await git.run(.raw("init -b main"))
         try await git.run(.raw("config user.name 'Test User'"))
         try await git.run(.raw("config user.email 'test@example.com'"))
         
@@ -215,7 +215,7 @@ class StatusCommandTests: XCTestCase {
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try await git.run(.raw("init"))
+        try await git.run(.raw("init -b main"))
         try await git.run(.raw("config user.name 'Test User'"))
         try await git.run(.raw("config user.email 'test@example.com'"))
         
@@ -254,7 +254,7 @@ class StatusCommandTests: XCTestCase {
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try await git.run(.raw("init"))
+        try await git.run(.raw("init -b main"))
         try await git.run(.raw("config user.name 'Test User'"))
         try await git.run(.raw("config user.email 'test@example.com'"))
         
@@ -339,7 +339,7 @@ class StatusCommandTests: XCTestCase {
         try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true, attributes: nil)
         
         let git = Git(path: repoPath)
-        try await git.run(.raw("init"))
+        try await git.run(.raw("init -b main"))
         try await git.run(.raw("config user.name 'Test User'"))
         try await git.run(.raw("config user.email 'test@example.com'"))
         
@@ -446,7 +446,7 @@ private extension StatusCommandTests {
         try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
 
         let git = Git(path: path)
-        try await git.run(.raw("init"))
+        try await git.run(.raw("init -b main"))
         try await git.run(.raw("config user.name 'Test User'"))
         try await git.run(.raw("config user.email 'test@example.com'"))
 
