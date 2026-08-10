@@ -16,7 +16,7 @@ on:
 
 jobs:
   release:
-    uses: armcknight/workflows/.github/workflows/swiftpm-cask-release.yml@1
+    uses: armcknight/workflows/.github/workflows/swiftpm-cask-release.yml@2
     with:
       cask-name: forgery
       binaries: forgery
@@ -27,4 +27,5 @@ jobs:
       sign: true
       match-git-url: git@github.com:armcknight/fastlane-match.git
       team-id: 29274SF4VL
+      bundle-id: io.mcknight.forgery
     secrets: inherit

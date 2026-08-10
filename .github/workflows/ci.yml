@@ -10,6 +10,6 @@ jobs:
   ci:
     # octokit / git-kit / RequestKit are vendored as git submodules, so the
     # reusable checkout must fetch them or `swift build` can't find their manifests.
-    uses: armcknight/workflows/.github/workflows/swift-package-ci.yml@1
+    uses: armcknight/workflows/.github/workflows/swift-package-ci.yml@2
     with:
       submodules: recursive
