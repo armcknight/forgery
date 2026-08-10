@@ -1,6 +1,6 @@
 # The `static let version` in the root command is the single source of truth
 # for the release version (bumped by vrsn, read by the release workflow).
-VERSION_FILE = Sources/forgery/main.swift
+VERSION_FILE = Sources/forgery/Forgery.swift
 VRSN_KEY = version
 
 .PHONY: help build test install uninstall fmt check patch minor major deploy-beta deploy
@@ -53,7 +53,9 @@ uninstall: ## Remove the local forgery binary and restore the Homebrew cask
 #   - tags `X.Y.Z`        → Casks/forgery.rb     (stable channel)
 #   - tags `X.Y.Z-rc.N`   → Casks/forgery-rc.rb  (RC channel; users opt in)
 #
-# Requires `vrsn` on PATH (from armcknight/tools cask).
+# Requires `vrsn` + `prepare-release` on PATH (from the armcknight/tools cask).
+# `make deploy` migrates the CHANGELOG [Unreleased] section into a dated version
+# section, commits, tags, and pushes.
 
 patch: ## Bump the patch version (x.y.Z) and commit
 	vrsn patch -f $(VERSION_FILE) -k $(VRSN_KEY) --commit
@@ -64,20 +66,10 @@ minor: ## Bump the minor version (x.Y.0) and commit
 major: ## Bump the major version (X.0.0) and commit
 	vrsn major -f $(VERSION_FILE) -k $(VRSN_KEY) --commit
 
-# Tags an RC of the current package version. RC number is auto-incremented
-# by counting existing `<version>-rc.*` tags. So you can run deploy-beta
-# repeatedly to ship rc.1, rc.2, etc. without re-bumping the version.
-deploy-beta: ## Tag + push an RC of the current version (ships to forgery-rc cask)
-	@VERSION=$$(vrsn -r -f $(VERSION_FILE) -k $(VRSN_KEY)) && \
-	N=$$(git tag --list "$$VERSION-rc.*" | wc -l | tr -d ' ') && \
-	NEXT=$$((N + 1)) && \
-	TAG="$$VERSION-rc.$$NEXT" && \
-	echo "Tagging $$TAG..." && \
-	git tag -a "$$TAG" -m "$$TAG" && \
-	git push && git push origin "$$TAG"
+# prepare-release auto-numbers the RC from the changelog's RC sections, so you
+# can run deploy-beta repeatedly to ship rc.1, rc.2, etc. without re-bumping.
+deploy-beta: ## Migrate the changelog, tag an RC, and push (ships the forgery-rc cask)
+	prepare-release rc --file $(VERSION_FILE) --key $(VRSN_KEY) --push
 
-deploy: ## Tag + push the current version (ships to the stable forgery cask)
-	@VERSION=$$(vrsn -r -f $(VERSION_FILE) -k $(VRSN_KEY)) && \
-	echo "Tagging $$VERSION..." && \
-	git tag -a "$$VERSION" -m "$$VERSION" && \
-	git push && git push origin "$$VERSION"
+deploy: ## Migrate the changelog, tag, and push the release (ships the stable forgery cask)
+	prepare-release --file $(VERSION_FILE) --key $(VRSN_KEY) --push
