@@ -1,11 +1,12 @@
 name: release
 
 # Delegates to armcknight/workflows' reusable SwiftPM cask-release pipeline:
-# builds, (optionally signs+notarizes), tarballs the binary, publishes to the
+# builds, signs+notarizes, tarballs the binary, publishes to the
 # armcknight/homebrew-tools tap, and bumps Casks/forgery.rb (or forgery-rc.rb
 # for an RC tag). Requires TAP_RELEASE_TOKEN (Contents: read+write on the tap).
-# To turn on signing, set `sign: true` and add match-git-url + team-id inputs
-# plus the MATCH_* / NOTARY_* secrets.
+# Signing reads the Developer ID certificate from the fastlane match repo
+# (readonly), so it also needs the MATCH_PASSWORD + MATCH_DEPLOY_KEY and
+# NOTARY_* secrets.
 
 on:
   push:
@@ -23,4 +24,7 @@ jobs:
       version-regex: '.*static let version = "([^"]+)".*'
       # octokit / git-kit / RequestKit are vendored as git submodules.
       submodules: recursive
+      sign: true
+      match-git-url: git@github.com:armcknight/fastlane-match.git
+      team-id: 29274SF4VL
     secrets: inherit

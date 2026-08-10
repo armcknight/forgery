@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Release binaries are now Developer ID signed and notarized, so the Homebrew
+  cask installs and runs without a Gatekeeper prompt.
+
 ## [1.0.0] 2026-08-10
 
 First tagged release. `forgery` mirrors a forge's repositories to a local
