@@ -33,6 +33,20 @@ let package = Package(
             .product(name: "Logging", package: "swift-log"),
             .product(name: "ShellKit", package: "shell-kit"),
         ]
+        ),
+        .testTarget(
+            name: "forgery-libTests",
+            dependencies: [
+                "forgery-lib",
+                .product(name: "GitKit", package: "git-kit"),
+            ]
+        ),
+        .testTarget(
+            name: "forgeryTests",
+            dependencies: [
+                "forgery-lib",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]
         )
     ]
 )

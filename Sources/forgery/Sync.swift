@@ -134,6 +134,10 @@ struct Sync: ParsableCommand {
             }
 
             logger.debug("Checking repos in \(fullPath)")
+            
+            // Check if this is a starred or forked directory that has an extra owner level
+            let needsOwnerLevel = fullPath.contains("/starred") || fullPath.contains("/forked")
+            
             for case let repoPath in try fileManager.contentsOfDirectory(atPath: fullPath) {
                 logger.debug("Checking repo: \(repoPath)")
                 let fullRepoPath = "\(fullPath)/\(repoPath)"
@@ -141,15 +145,39 @@ struct Sync: ParsableCommand {
                     continue
                 }
 
-                let gitDirURL = (fullRepoPath as NSString).appendingPathComponent(".git")
-                guard fileManager.fileExists(atPath: gitDirURL) else {
-                    logger.warning("Directory does not contain a git repo: \(fullRepoPath)")
-                    continue
-                }
+                if needsOwnerLevel {
+                    // This is an owner directory, need to descend one more level to find actual repos
+                    logger.debug("Checking owner directory: \(repoPath)")
+                    for case let actualRepoPath in try fileManager.contentsOfDirectory(atPath: fullRepoPath) {
+                        logger.debug("Checking actual repo: \(actualRepoPath)")
+                        let fullActualRepoPath = "\(fullRepoPath)/\(actualRepoPath)"
+                        guard let actualType = try fileManager.attributesOfItem(atPath: fullActualRepoPath)[.type] as? FileAttributeType, actualType == .typeDirectory else {
+                            continue
+                        }
+                        
+                        let gitDirURL = (fullActualRepoPath as NSString).appendingPathComponent(".git")
+                        guard fileManager.fileExists(atPath: gitDirURL) else {
+                            logger.warning("Directory does not contain a git repo: \(fullActualRepoPath)")
+                            continue
+                        }
 
-                let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: true)
-                if repoSummary.status.contains(.pushedWIP) {
-                    reposWithWork.append(repoSummary)
+                        let repoSummary = try summarizeStatus(repoPath: fullActualRepoPath, pushWIPChanges: true)
+                        if repoSummary.status.contains(.pushedWIP) {
+                            reposWithWork.append(repoSummary)
+                        }
+                    }
+                } else {
+                    // Regular directory structure - repo is directly here
+                    let gitDirURL = (fullRepoPath as NSString).appendingPathComponent(".git")
+                    guard fileManager.fileExists(atPath: gitDirURL) else {
+                        logger.warning("Directory does not contain a git repo: \(fullRepoPath)")
+                        continue
+                    }
+
+                    let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: true)
+                    if repoSummary.status.contains(.pushedWIP) {
+                        reposWithWork.append(repoSummary)
+                    }
                 }
             }
         }

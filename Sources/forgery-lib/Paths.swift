@@ -157,6 +157,10 @@ public struct UserPaths {
     public var validPaths: [String] {
         var pathsToCheck = commonPaths.validPaths
 
+        if !commonPaths.repoTypes.noStarredRepos {
+            pathsToCheck.append(starredRepoPath)
+        }
+
         if !commonPaths.repoTypes.noForkedGists {
             pathsToCheck.append(forkedGistPath)
         }

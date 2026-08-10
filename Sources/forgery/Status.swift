@@ -26,23 +26,28 @@ struct Status: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Shows the status of all repositories in the given directory",
         discussion: """
-        Checks all repositories for uncommitted changes and unpushed commits.
+        Checks all repositories for uncommitted changes, unpushed commits, and local-only branches.
         
         Status indicators:
           M - Modified working tree (uncommitted changes)
-          P - Unpushed commits exist
+          P - Unpushed commits exist (requires upstream configuration)
+          L - Local-only branches (no upstream configured)
+        
+        Note: P and L are mutually exclusive per repository since local-only branches
+        cannot have unpushed commits (no upstream to push to).
         
         Example output:
           Public Repositories:
             [M] /path/to/../repo-name               - has uncommitted changes
             [P] /path/to/../repo-nameother-repo     - has unpushed commits
-            [MP] /path/to/../repo-nameboth-repo     - has both
+            [L] /path/to/../repo-namelocal-repo     - has local-only branches
+            [MP] /path/to/../repo-nameboth-repo     - has modifications and unpushed commits
+            [ML] /path/to/../repo-namelocal-mod     - has modifications and local-only branches
         """
     )
 
     @OptionGroup(title: "Basic options")
     var baseOptions: BaseOptions
-
 
     @OptionGroup(title: "Repo types to work on")
     var repoTypes: RepoTypeOptions
@@ -127,6 +132,10 @@ struct Status: ParsableCommand {
             }
 
             logger.debug("Checking repos in \(fullPath)")
+            
+            // Check if this is a starred or forked directory that has an extra owner level
+            let needsOwnerLevel = fullPath.contains("/starred") || fullPath.contains("/forked")
+            
             for case let repoPath in try fileManager.contentsOfDirectory(atPath: fullPath) {
                 logger.debug("Checking repo: \(repoPath)")
                 let fullRepoPath = "\(fullPath)/\(repoPath)"
@@ -134,15 +143,39 @@ struct Status: ParsableCommand {
                     continue
                 }
 
-                let gitDirURL = (fullRepoPath as NSString).appendingPathComponent(".git")
-                guard fileManager.fileExists(atPath: gitDirURL) else {
-                    logger.warning("Directory does not contain a git repo: \(fullRepoPath)")
-                    continue
-                }
+                if needsOwnerLevel {
+                    // This is an owner directory, need to descend one more level to find actual repos
+                    logger.debug("Checking owner directory: \(repoPath)")
+                    for case let actualRepoPath in try fileManager.contentsOfDirectory(atPath: fullRepoPath) {
+                        logger.debug("Checking actual repo: \(actualRepoPath)")
+                        let fullActualRepoPath = "\(fullRepoPath)/\(actualRepoPath)"
+                        guard let actualType = try fileManager.attributesOfItem(atPath: fullActualRepoPath)[.type] as? FileAttributeType, actualType == .typeDirectory else {
+                            continue
+                        }
+                        
+                        let gitDirURL = (fullActualRepoPath as NSString).appendingPathComponent(".git")
+                        guard fileManager.fileExists(atPath: gitDirURL) else {
+                            logger.warning("Directory does not contain a git repo: \(fullActualRepoPath)")
+                            continue
+                        }
 
-                let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: false)
-                if repoSummary.needsReport {
-                    reposWithWork.append(repoSummary)
+                        let repoSummary = try summarizeStatus(repoPath: fullActualRepoPath, pushWIPChanges: false)
+                        if repoSummary.needsReport {
+                            reposWithWork.append(repoSummary)
+                        }
+                    }
+                } else {
+                    // Regular directory structure - repo is directly here
+                    let gitDirURL = (fullRepoPath as NSString).appendingPathComponent(".git")
+                    guard fileManager.fileExists(atPath: gitDirURL) else {
+                        logger.warning("Directory does not contain a git repo: \(fullRepoPath)")
+                        continue
+                    }
+
+                    let repoSummary = try summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: false)
+                    if repoSummary.needsReport {
+                        reposWithWork.append(repoSummary)
+                    }
                 }
             }
         }
@@ -157,25 +190,27 @@ struct Status: ParsableCommand {
 
         let modifiedRepos = reposWithWork.filter { $0.status.contains(.dirtyIndex) }
         let unpushedRepos = reposWithWork.filter { !$0.branchInfo.isEmpty }
+        let localOnlyRepos = reposWithWork.filter { $0.status.contains(.localOnlyBranches) }
 
         try printReposByType(modifiedRepos, title: "Repositories with uncommitted changes", dirty: true, unpushed: false)
         try printReposByType(unpushedRepos, title: "Repositories with unpushed commits on branches", dirty: false, unpushed: true)
+        try printReposByType(localOnlyRepos, title: "Repositories with local-only branches", dirty: false, unpushed: false, localOnly: true)
     }
 
-    private func printReposByType(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool) throws {
+    private func printReposByType(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool, localOnly: Bool = false) throws {
         guard !repos.isEmpty else { return }
         print("\n\(title):")
-        try printRepoGroup(repos.filter { $0.path.contains("repos/public/") }, title: "Public Repositories", dirty: dirty, unpushed: unpushed)
-        try printRepoGroup(repos.filter { $0.path.contains("repos/private/") }, title: "Private Repositories", dirty: dirty, unpushed: unpushed)
-        try printRepoGroup(repos.filter { $0.path.contains("repos/forks/") }, title: "Forked Repositories", dirty: dirty, unpushed: unpushed)
-        try printRepoGroup(repos.filter { $0.path.contains("repos/starred/") }, title: "Starred Repositories", dirty: dirty, unpushed: unpushed)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/public/") }, title: "Public Gists", dirty: dirty, unpushed: unpushed)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/private/") }, title: "Private Gists", dirty: dirty, unpushed: unpushed)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/forks/") }, title: "Forked Gists", dirty: dirty, unpushed: unpushed)
-        try printRepoGroup(repos.filter { $0.path.contains("gists/starred/") }, title: "Starred Gists", dirty: dirty, unpushed: unpushed)
+        try printRepoGroup(repos.filter { $0.path.contains("repos/public/") }, title: "Public Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try printRepoGroup(repos.filter { $0.path.contains("repos/private/") }, title: "Private Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try printRepoGroup(repos.filter { $0.path.contains("repos/forks/") }, title: "Forked Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try printRepoGroup(repos.filter { $0.path.contains("repos/starred/") }, title: "Starred Repositories", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/public/") }, title: "Public Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/private/") }, title: "Private Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/forks/") }, title: "Forked Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
+        try printRepoGroup(repos.filter { $0.path.contains("gists/starred/") }, title: "Starred Gists", dirty: dirty, unpushed: unpushed, localOnly: localOnly)
     }
 
-    private func printRepoGroup(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool) throws {
+    private func printRepoGroup(_ repos: [RepoSummary], title: String, dirty: Bool, unpushed: Bool, localOnly: Bool = false) throws {
         guard !repos.isEmpty else { return }
         print("\t\(title):")
         for repo in repos.sorted(by: { $0.path.components(separatedBy: "/").last! < $1.path.components(separatedBy: "/").last! }) {
@@ -183,8 +218,16 @@ struct Status: ParsableCommand {
             if dirty {
                 print(try diffstat(repoPath: repo.path).split(separator: "\n").map({ "\t\t\t\($0)" }).joined(separator: "\n"))
             } else if unpushed {
-                for branch in repo.branchInfo {
-                    print("\t\t\t\(branch.branch): \(branch.unpushedCommits) unpushed commits")
+                for branch in repo.repositoryBranchInfo.branchesWithUnpushedCommits {
+                    if case .unpushedCommits(let count) = branch.status {
+                        let currentIndicator = branch.isCurrentBranch ? " (current)" : ""
+                        print("\t\t\t\(branch.name): \(count) unpushed commits\(currentIndicator)")
+                    }
+                }
+            } else if localOnly {
+                for branch in repo.repositoryBranchInfo.localOnlyBranches {
+                    let currentIndicator = branch.isCurrentBranch ? " (current)" : ""
+                    print("\t\t\t\(branch.name): local-only branch (no upstream configured)\(currentIndicator)")
                 }
             }
         }

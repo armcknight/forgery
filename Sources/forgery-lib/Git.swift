@@ -43,15 +43,82 @@ public struct IndexState: OptionSet {
     public static let clean = IndexState(rawValue: 1 << 0)
     public static let dirtyIndex = IndexState(rawValue: 1 << 1)
     public static let pushedWIP = IndexState(rawValue: 1 << 2)
+    public static let localOnlyBranches = IndexState(rawValue: 1 << 3)
+}
+
+public enum BranchStatus {
+    case upToDate                           // Branch is clean and up to date with upstream
+    case unpushedCommits(count: Int)        // Branch has commits that haven't been pushed to upstream
+    case localOnly                          // Branch has no upstream configured
+    case noUpstream                         // Branch exists but no upstream is configured (alias for localOnly)
+    
+    var isLocalOnly: Bool {
+        switch self {
+        case .localOnly, .noUpstream:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    var hasUnpushedCommits: Bool {
+        switch self {
+        case .unpushedCommits:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+public struct BranchInfo {
+    public let name: String
+    public let status: BranchStatus
+    public let isCurrentBranch: Bool
+}
+
+public struct RepositoryBranchInfo {
+    public let branches: [BranchInfo]
+    
+    public var hasLocalOnlyBranches: Bool {
+        branches.contains { $0.status.isLocalOnly }
+    }
+    
+    public var hasUnpushedCommits: Bool {
+        branches.contains { $0.status.hasUnpushedCommits }
+    }
+    
+    public var localOnlyBranches: [BranchInfo] {
+        branches.filter { $0.status.isLocalOnly }
+    }
+    
+    public var branchesWithUnpushedCommits: [BranchInfo] {
+        branches.filter { $0.status.hasUnpushedCommits }
+    }
 }
 
 public struct RepoSummary {
     public let path: String
     public let status: IndexState
-    public let branchInfo: [(branch: String, unpushedCommits: Int)]
+    public let repositoryBranchInfo: RepositoryBranchInfo
+    
+    // Legacy properties for backward compatibility
+    public var branchInfo: [(branch: String, unpushedCommits: Int)] {
+        repositoryBranchInfo.branchesWithUnpushedCommits.compactMap { branch in
+            if case .unpushedCommits(let count) = branch.status {
+                return (branch: branch.name, unpushedCommits: count)
+            }
+            return nil
+        }
+    }
+    
+    public var localOnlyBranches: [String] {
+        repositoryBranchInfo.localOnlyBranches.map { $0.name }
+    }
 
     public var needsReport: Bool {
-        status.contains(.dirtyIndex) || status.contains(.pushedWIP) || !branchInfo.isEmpty
+        status.contains(.dirtyIndex) || status.contains(.pushedWIP) || 
+        repositoryBranchInfo.hasUnpushedCommits || repositoryBranchInfo.hasLocalOnlyBranches
     }
 }
 
@@ -65,6 +132,9 @@ extension RepoSummary: CustomStringConvertible {
         }
         if !branchInfo.isEmpty {
             string += "P"
+        }
+        if status.contains(IndexState.localOnlyBranches) {
+            string += "L"
         }
         return string
     }
@@ -88,9 +158,15 @@ public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) throws -> 
 }
 
 public func summarizeStatus(repoPath: String, pushWIPChanges: Bool) throws -> RepoSummary {
-    let state = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
-    let branchInfo = try getLocalBranchesWithUnpushedCommits(repoPath: repoPath)
-    return RepoSummary(path: repoPath, status: state, branchInfo: branchInfo)
+    var state = try checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
+    let repositoryBranchInfo = try getBranchInfo(repoPath: repoPath)
+    
+    // Add local-only branches indicator if any exist
+    if repositoryBranchInfo.hasLocalOnlyBranches {
+        state.insert(.localOnlyBranches)
+    }
+    
+    return RepoSummary(path: repoPath, status: state, repositoryBranchInfo: repositoryBranchInfo)
 }
 
 func saveWIPChanges(repoPath: String) throws {
@@ -117,19 +193,38 @@ public func diffstat(repoPath: String) throws -> String {
     return try git.run(.status())
 }
 
-public func getLocalBranchesWithUnpushedCommits(repoPath: String) throws -> [(branch: String, unpushedCommits: Int)] {
+public func getBranchInfo(repoPath: String) throws -> RepositoryBranchInfo {
     let git = Git(path: repoPath)
     let branchesOutput = try git.run(.raw("branch"))
-    let branches = branchesOutput.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "* ", with: "") }
+    let branchLines = branchesOutput.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+    
+    var branches: [BranchInfo] = []
 
-    var branchesWithUnpushedCommits: [(branch: String, unpushedCommits: Int)] = []
-
-    for branch in branches {
-        let unpushedCommitsOutput = try git.run(.revList(count: true, revisions: "@{u}.."))
-        if let unpushedCommits = Int(unpushedCommitsOutput.trimmingCharacters(in: .whitespacesAndNewlines)), unpushedCommits > 0 {
-            branchesWithUnpushedCommits.append((branch: branch, unpushedCommits: unpushedCommits))
+    for branchLine in branchLines {
+        let isCurrentBranch = branchLine.hasPrefix("* ")
+        let branchName = branchLine.replacingOccurrences(of: "* ", with: "")
+        
+        // Check each branch's status individually
+        let branchStatus: BranchStatus
+        
+        do {
+            // Check for upstream without checking out - use branch-specific revision syntax
+            let unpushedCommitsOutput = try git.run(.revList(count: true, revisions: "\(branchName)@{u}..\(branchName)"))
+            let unpushedCommits = Int(unpushedCommitsOutput.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            
+            if unpushedCommits > 0 {
+                branchStatus = .unpushedCommits(count: unpushedCommits)
+            } else {
+                branchStatus = .upToDate
+            }
+        } catch {
+            // If there's no upstream configured, this is a local-only branch
+            logger.debug("No upstream configured for branch '\(branchName)': \(error)")
+            branchStatus = .localOnly
         }
+        
+        branches.append(BranchInfo(name: branchName, status: branchStatus, isCurrentBranch: isCurrentBranch))
     }
 
-    return branchesWithUnpushedCommits
+    return RepositoryBranchInfo(branches: branches)
 }
