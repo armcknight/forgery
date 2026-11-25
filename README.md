@@ -145,6 +145,9 @@ Repositories needing attention:
 
 ## TODO
 
+Follow-up work that the `status` rework left open is written up in
+[docs/status-followups.md](docs/status-followups.md).
+
 ### Features & Enhancements
 
 - [ ] add verbose mode for debug logging
