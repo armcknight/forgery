@@ -58,36 +58,14 @@ struct Sync: AsyncParsableCommand {
     }
 
     private func processWIPChanges() async throws {
-        var repoSummaries = [RepoSummary]()
+        let report = try await scanRepositories(
+            roots: try collectRoots(),
+            options: ScanOptions(
+                inspection: RepoInspectionOptions(fetch: false, collectDiffstat: false, pushWIPChanges: true)
+            )
+        )
 
-        if let organization = userTypes.organization {
-            repoSummaries = try await checkForOrganization(organization: organization)
-        } else if let user = userTypes.user {
-            repoSummaries = try await checkForUsername(username: user)
-        } else if userTypes.all {
-            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
-                repoSummaries.append(contentsOf: try await checkForUsername(username: username))
-            }
-            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
-                repoSummaries.append(contentsOf: try await checkForOrganization(organization: organization))
-            }
-        } else if userTypes.allUsers {
-            if userTypes.allOrgs {
-                throw ForgeryError.Status.useAll
-            }
-
-            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") { username in
-                repoSummaries.append(contentsOf: try await checkForUsername(username: username))
-            }
-        } else if userTypes.allOrgs {
-            try await iterateOverSubdirectories(path: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") { organization in
-                repoSummaries.append(contentsOf: try await checkForOrganization(organization: organization))
-            }
-        } else {
-            throw ForgeryError.Status.invalidOption
-        }
-
-        let wipRepos = repoSummaries.filter { $0.status.contains(.pushedWIP) }
+        let wipRepos = report.repos.filter { $0.pushedWIP }
         if !wipRepos.isEmpty {
             print("\nRepositories with WIP changes pushed:")
             for repo in wipRepos {
@@ -98,89 +76,52 @@ struct Sync: AsyncParsableCommand {
         }
     }
 
-    private func iterateOverSubdirectories(path: String, block: (String) async throws -> Void) async throws {
+    private func collectRoots() throws -> [RepoRoot] {
+        var roots = [RepoRoot]()
+
+        if let organization = userTypes.organization {
+            roots += try organizationRoots(organization)
+        } else if let user = userTypes.user {
+            roots += try userRoots(user)
+        } else if userTypes.all {
+            try forEachSubdirectory(of: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") {
+                roots += try userRoots($0)
+            }
+            try forEachSubdirectory(of: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") {
+                roots += try organizationRoots($0)
+            }
+        } else if userTypes.allUsers {
+            if userTypes.allOrgs {
+                throw ForgeryError.Status.useAll
+            }
+            try forEachSubdirectory(of: "\(fullBasePath)/\(CommonPaths.userBasePathComponent)") {
+                roots += try userRoots($0)
+            }
+        } else if userTypes.allOrgs {
+            try forEachSubdirectory(of: "\(fullBasePath)/\(CommonPaths.orgBasePathComponent)") {
+                roots += try organizationRoots($0)
+            }
+        } else {
+            throw ForgeryError.Status.invalidOption
+        }
+
+        return roots
+    }
+
+    private func userRoots(_ username: String) throws -> [RepoRoot] {
+        try UserPaths(basePath: basePath, username: username, repoTypes: repoTypes.resolved, createOnDisk: false).validRoots
+    }
+
+    private func organizationRoots(_ organization: String) throws -> [RepoRoot] {
+        try CommonPaths(basePath: basePath, orgName: organization, repoTypes: repoTypes.resolved, createOnDisk: false).validRoots
+    }
+
+    private func forEachSubdirectory(of path: String, block: (String) throws -> Void) throws {
         guard FileManager.default.fileExists(atPath: path) else {
             throw ForgeryError.Status.pathDoesNotExist
         }
-
-        for case let subdirectory in try FileManager.default.contentsOfDirectory(atPath: path) {
-            try await block(subdirectory)
+        for subdirectory in try FileManager.default.contentsOfDirectory(atPath: path).sorted() {
+            try block(subdirectory)
         }
-    }
-
-    private func checkForUsername(username: String) async throws -> [RepoSummary] {
-        let userPaths = try UserPaths(basePath: basePath, username: username, repoTypes: repoTypes.resolved, createOnDisk: false)
-        return try await checkRepos(pathsToCheck: userPaths.validPaths)
-    }
-
-    private func checkForOrganization(organization: String) async throws -> [RepoSummary] {
-        let orgPaths = try CommonPaths(basePath: basePath, orgName: organization, repoTypes: repoTypes.resolved, createOnDisk: false)
-        return try await checkRepos(pathsToCheck: orgPaths.validPaths)
-    }
-
-    private func checkRepos(pathsToCheck: [String]) async throws -> [RepoSummary] {
-        var reposWithWork: [RepoSummary] = []
-        let fileManager = FileManager.default
-        for path in pathsToCheck {
-            var isDirectory: ObjCBool = false
-            let fullPath = (path as NSString).expandingTildeInPath
-            guard fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory) else {
-                logger.debug("Path does not exist: \(path)")
-                continue
-            }
-            guard isDirectory.boolValue else {
-                logger.warning("Path is not a directory: \(path)")
-                continue
-            }
-
-            logger.debug("Checking repos in \(fullPath)")
-            
-            // Check if this is a starred or forked directory that has an extra owner level
-            let needsOwnerLevel = fullPath.contains("/starred") || fullPath.contains("/forked")
-            
-            for case let repoPath in try fileManager.contentsOfDirectory(atPath: fullPath) {
-                logger.debug("Checking repo: \(repoPath)")
-                let fullRepoPath = "\(fullPath)/\(repoPath)"
-                guard let type = try fileManager.attributesOfItem(atPath: fullRepoPath)[.type] as? FileAttributeType, type == .typeDirectory else {
-                    continue
-                }
-
-                if needsOwnerLevel {
-                    // This is an owner directory, need to descend one more level to find actual repos
-                    logger.debug("Checking owner directory: \(repoPath)")
-                    for case let actualRepoPath in try fileManager.contentsOfDirectory(atPath: fullRepoPath) {
-                        logger.debug("Checking actual repo: \(actualRepoPath)")
-                        let fullActualRepoPath = "\(fullRepoPath)/\(actualRepoPath)"
-                        guard let actualType = try fileManager.attributesOfItem(atPath: fullActualRepoPath)[.type] as? FileAttributeType, actualType == .typeDirectory else {
-                            continue
-                        }
-                        
-                        let gitDirURL = (fullActualRepoPath as NSString).appendingPathComponent(".git")
-                        guard fileManager.fileExists(atPath: gitDirURL) else {
-                            logger.warning("Directory does not contain a git repo: \(fullActualRepoPath)")
-                            continue
-                        }
-
-                        let repoSummary = try await summarizeStatus(repoPath: fullActualRepoPath, pushWIPChanges: true)
-                        if repoSummary.status.contains(.pushedWIP) {
-                            reposWithWork.append(repoSummary)
-                        }
-                    }
-                } else {
-                    // Regular directory structure - repo is directly here
-                    let gitDirURL = (fullRepoPath as NSString).appendingPathComponent(".git")
-                    guard fileManager.fileExists(atPath: gitDirURL) else {
-                        logger.warning("Directory does not contain a git repo: \(fullRepoPath)")
-                        continue
-                    }
-
-                    let repoSummary = try await summarizeStatus(repoPath: fullRepoPath, pushWIPChanges: true)
-                    if repoSummary.status.contains(.pushedWIP) {
-                        reposWithWork.append(repoSummary)
-                    }
-                }
-            }
-        }
-        return reposWithWork
     }
 }

@@ -6,7 +6,7 @@ public enum ForgeryError {
         enum Repo: Error {
             case alreadyCloned
             case noSSHURL
-            case couldNotFetchRepo
+            case couldNotFetchForkParentRepo
             case noOwnerLogin
             case noName
             case noForkParent

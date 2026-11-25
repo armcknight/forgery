@@ -14,7 +14,7 @@ func cloneRepo(repoName: String, sshURL: String, cloneRoot: String) async throws
     guard !FileManager.default.fileExists(atPath: repoPath) else {
         throw ForgeryError.Clone.Repo.alreadyCloned
     }
-    
+
     logger.info("Cloning \(sshURL) into \(repoName)...")
     var git = Git(path: cloneRoot)
     try await git.run(.clone(url: sshURL, dirName: repoName))
@@ -33,139 +33,202 @@ func remoteRepoExists(repoSSHURL: String) async -> Bool {
     }
 }
 
-public struct IndexState: OptionSet {
-    public var rawValue: UInt
-    public init(rawValue: UInt) {
-        self.rawValue = rawValue
-    }
+// MARK: - Inspecting a repo
 
-    public static let clean = IndexState(rawValue: 1 << 0)
-    public static let dirtyIndex = IndexState(rawValue: 1 << 1)
-    public static let pushedWIP = IndexState(rawValue: 1 << 2)
-    public static let localOnlyBranches = IndexState(rawValue: 1 << 3)
+/**
+ * What to collect while inspecting a repo, and whether to touch the network or the working tree
+ * on the way.
+ */
+public struct RepoInspectionOptions: Sendable {
+    /// Fetch from all remotes, with `--prune`, before reading any state.
+    public var fetch: Bool
+
+    /// Collect `git status` output for repos with a dirty tree, so the renderers do not have to
+    /// run git themselves.
+    public var collectDiffstat: Bool
+
+    /// Commit a dirty tree to a WIP branch and push it. Used by `sync`, never by `status`.
+    public var pushWIPChanges: Bool
+
+    public init(fetch: Bool = false, collectDiffstat: Bool = true, pushWIPChanges: Bool = false) {
+        self.fetch = fetch
+        self.collectDiffstat = collectDiffstat
+        self.pushWIPChanges = pushWIPChanges
+    }
 }
 
-public enum BranchStatus {
-    case upToDate                           // Branch is clean and up to date with upstream
-    case unpushedCommits(count: Int)        // Branch has commits that haven't been pushed to upstream
-    case localOnly                          // Branch has no upstream configured
-    case noUpstream                         // Branch exists but no upstream is configured (alias for localOnly)
-    
-    var isLocalOnly: Bool {
-        switch self {
-        case .localOnly, .noUpstream:
-            return true
-        default:
-            return false
+/**
+ * Reads the full state of one repo.
+ *
+ * Does not throw when git fails on the network. A fetch that does not complete is recorded on the
+ * summary as `fetchFailed`, so one unreachable remote cannot stop a scan of a large tree.
+ */
+public func inspectRepo(
+    at path: String,
+    category: RepoCategory,
+    owner: String? = nil,
+    options: RepoInspectionOptions = RepoInspectionOptions()
+) async throws -> RepoSummary {
+    let fullPath = (path as NSString).expandingTildeInPath
+    logger.debug("Inspecting \(fullPath)...")
+
+    var fetchFailed = false
+    if options.fetch {
+        do {
+            try await fetchAllRemotes(repoPath: fullPath)
+        } catch {
+            logger.warning("Fetch failed for \(fullPath): \(error)")
+            fetchFailed = true
         }
     }
-    
-    var hasUnpushedCommits: Bool {
-        switch self {
-        case .unpushedCommits:
-            return true
-        default:
-            return false
+
+    var workingTree = try await readWorkingTreeState(repoPath: fullPath)
+
+    var pushedWIP = false
+    if options.pushWIPChanges, workingTree.isDirty {
+        try await saveWIPChanges(repoPath: fullPath)
+        pushedWIP = true
+        // The tree is clean once the WIP branch is committed and pushed.
+        workingTree = WorkingTreeState(stashes: workingTree.stashes)
+    }
+
+    let branches = try await readBranches(repoPath: fullPath)
+    let detachedAt = try await readDetachedHead(repoPath: fullPath)
+
+    var diffstat: String? = nil
+    if options.collectDiffstat, workingTree.isDirty {
+        // The short form, because the long form repeats the branch state already reported above
+        // and buries the changed files in advice text.
+        diffstat = try? await Git(path: fullPath).run(.status(short: true))
+    }
+
+    return RepoSummary(
+        path: fullPath,
+        category: category,
+        owner: owner,
+        name: (fullPath as NSString).lastPathComponent,
+        workingTree: workingTree,
+        branches: branches,
+        detachedAt: detachedAt,
+        fetchFailed: fetchFailed,
+        pushedWIP: pushedWIP,
+        diffstat: diffstat
+    )
+}
+
+/**
+ * Fetches every remote and prunes remote-tracking refs whose branches are gone.
+ *
+ * The prune is what lets `readBranches` tell a deleted upstream from a live one.
+ */
+public func fetchAllRemotes(repoPath: String) async throws {
+    let git = Git(path: (repoPath as NSString).expandingTildeInPath)
+    try await git.run(.raw("fetch --all --prune --quiet"))
+}
+
+/**
+ * Counts staged, unstaged and untracked files, and entries on the stash stack.
+ */
+public func readWorkingTreeState(repoPath: String) async throws -> WorkingTreeState {
+    let git = Git(path: (repoPath as NSString).expandingTildeInPath)
+
+    var staged = 0
+    var unstaged = 0
+    var untracked = 0
+
+    let porcelain = try await git.run(.raw("status --porcelain"))
+    for line in porcelain.split(separator: "\n") {
+        guard line.count >= 2 else { continue }
+        let index = line[line.startIndex]
+        let worktree = line[line.index(after: line.startIndex)]
+
+        if index == "?" && worktree == "?" {
+            untracked += 1
+            continue
         }
+        if index != " " { staged += 1 }
+        if worktree != " " { unstaged += 1 }
     }
+
+    // A repo with no stash ref at all still exits zero here, with no output.
+    let stashOutput = (try? await git.run(.raw("stash list"))) ?? ""
+    let stashes = stashOutput.isEmpty ? 0 : stashOutput.split(separator: "\n").count
+
+    return WorkingTreeState(staged: staged, unstaged: unstaged, untracked: untracked, stashes: stashes)
 }
 
-public struct BranchInfo {
-    public let name: String
-    public let status: BranchStatus
-    public let isCurrentBranch: Bool
-}
+/**
+ * Reads every local branch and how it compares to its upstream.
+ *
+ * Reads `refs/heads` through `for-each-ref` rather than parsing `git branch`. Parsing `git branch`
+ * gives lines that are not branches at all: a detached HEAD prints as
+ * `* (HEAD detached at 1234abc)`, and a branch checked out in another worktree is marked with a
+ * `+ ` prefix rather than `* `. Both used to become branch names, fail the upstream lookup, and be
+ * reported as local-only.
+ */
+public func readBranches(repoPath: String) async throws -> [BranchInfo] {
+    let git = Git(path: (repoPath as NSString).expandingTildeInPath)
 
-public struct RepositoryBranchInfo {
-    public let branches: [BranchInfo]
-    
-    public var hasLocalOnlyBranches: Bool {
-        branches.contains { $0.status.isLocalOnly }
-    }
-    
-    public var hasUnpushedCommits: Bool {
-        branches.contains { $0.status.hasUnpushedCommits }
-    }
-    
-    public var localOnlyBranches: [BranchInfo] {
-        branches.filter { $0.status.isLocalOnly }
-    }
-    
-    public var branchesWithUnpushedCommits: [BranchInfo] {
-        branches.filter { $0.status.hasUnpushedCommits }
-    }
-}
+    let separator = "\u{1F}"
+    let format = ["%(refname:short)", "%(upstream:short)", "%(HEAD)", "%(worktreepath)"]
+        .joined(separator: separator)
+    let output = try await git.run(.raw("for-each-ref --format='\(format)' refs/heads"))
 
-public struct RepoSummary {
-    public let path: String
-    public let status: IndexState
-    public let repositoryBranchInfo: RepositoryBranchInfo
-    
-    // Legacy properties for backward compatibility
-    public var branchInfo: [(branch: String, unpushedCommits: Int)] {
-        repositoryBranchInfo.branchesWithUnpushedCommits.compactMap { branch in
-            if case .unpushedCommits(let count) = branch.status {
-                return (branch: branch.name, unpushedCommits: count)
+    var branches = [BranchInfo]()
+    for line in output.split(separator: "\n") {
+        let fields = line.components(separatedBy: separator)
+        guard fields.count >= 4, !fields[0].isEmpty else { continue }
+
+        let name = fields[0]
+        let upstream = fields[1].isEmpty ? nil : fields[1]
+        let isCurrent = fields[2] == "*"
+        // A branch reports a worktree path even when that worktree is the one being scanned, so
+        // "elsewhere" means it has a worktree and it is not the branch HEAD points at here.
+        let isCheckedOutElsewhere = !fields[3].isEmpty && !isCurrent
+
+        var ahead = 0
+        var behind = 0
+        var upstreamGone = false
+
+        if let upstream {
+            do {
+                let counts = try await git.run(
+                    .raw("rev-list --left-right --count \(shellQuoted("\(name)...\(upstream)"))")
+                )
+                // Raw integers separated by a tab, so this does not depend on the locale the way
+                // `%(upstream:track)` does.
+                let parts = counts.split(whereSeparator: { $0 == "\t" || $0 == " " })
+                ahead = parts.count > 0 ? Int(parts[0]) ?? 0 : 0
+                behind = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+            } catch {
+                // An upstream is configured but git cannot resolve it, so the remote branch is gone.
+                logger.debug("Upstream '\(upstream)' of branch '\(name)' cannot be resolved: \(error)")
+                upstreamGone = true
             }
-            return nil
         }
-    }
-    
-    public var localOnlyBranches: [String] {
-        repositoryBranchInfo.localOnlyBranches.map { $0.name }
+
+        branches.append(BranchInfo(
+            name: name,
+            isCurrent: isCurrent,
+            isCheckedOutElsewhere: isCheckedOutElsewhere,
+            upstream: upstream,
+            upstreamGone: upstreamGone,
+            ahead: ahead,
+            behind: behind
+        ))
     }
 
-    public var needsReport: Bool {
-        status.contains(.dirtyIndex) || status.contains(.pushedWIP) || 
-        repositoryBranchInfo.hasUnpushedCommits || repositoryBranchInfo.hasLocalOnlyBranches
-    }
+    return branches
 }
 
-extension RepoSummary: CustomStringConvertible {
-    public var description: String {
-        var string = ""
-        if status.contains(IndexState.pushedWIP) {
-            string += "W"
-        } else if status.contains(IndexState.dirtyIndex) {
-            string += "M"
-        }
-        if !branchInfo.isEmpty {
-            string += "P"
-        }
-        if status.contains(IndexState.localOnlyBranches) {
-            string += "L"
-        }
-        return string
-    }
-}
-
-public func checkWorkingIndex(repoPath: String, pushWIPChanges: Bool) async throws -> IndexState {
-    let fullRepoPath = (repoPath as NSString).expandingTildeInPath
-    logger.debug("Checking working index status of \(fullRepoPath)...")
-    let git = Git(path: fullRepoPath)
-
-    let clean = try await git.run(.status(short: true)).isEmpty
-
-    guard !clean else { return .clean }
-
-    guard !pushWIPChanges else {
-        try await saveWIPChanges(repoPath: fullRepoPath)
-        return .pushedWIP
-    }
-
-    return .dirtyIndex
-}
-
-public func summarizeStatus(repoPath: String, pushWIPChanges: Bool) async throws -> RepoSummary {
-    var state = try await checkWorkingIndex(repoPath: repoPath, pushWIPChanges: pushWIPChanges)
-    let repositoryBranchInfo = try await getBranchInfo(repoPath: repoPath)
-    
-    // Add local-only branches indicator if any exist
-    if repositoryBranchInfo.hasLocalOnlyBranches {
-        state.insert(.localOnlyBranches)
-    }
-    
-    return RepoSummary(path: repoPath, status: state, repositoryBranchInfo: repositoryBranchInfo)
+/**
+ * The short commit HEAD points at, when HEAD is not on a branch. Nil when HEAD is on a branch.
+ */
+public func readDetachedHead(repoPath: String) async throws -> String? {
+    let git = Git(path: (repoPath as NSString).expandingTildeInPath)
+    // Exits non-zero exactly when HEAD is not a symbolic ref.
+    guard (try? await git.run(.raw("symbolic-ref -q HEAD"))) == nil else { return nil }
+    return try? await git.run(.raw("rev-parse --short HEAD"))
 }
 
 func saveWIPChanges(repoPath: String) async throws {
@@ -184,46 +247,10 @@ func saveWIPChanges(repoPath: String) async throws {
     // TODO: if this is a fork, push to remote named "fork" instead of "origin"
     try await git.run(.push())
 
-    print("  ✓ Saved WIP changes to branch '\(branchName)'")
+    logger.info("Saved WIP changes in \(repoPath) to branch '\(branchName)'")
 }
 
-public func diffstat(repoPath: String) async throws -> String {
-    let git = Git(path: repoPath)
-    return try await git.run(.status())
-}
-
-public func getBranchInfo(repoPath: String) async throws -> RepositoryBranchInfo {
-    let git = Git(path: repoPath)
-    let branchesOutput = try await git.run(.raw("branch"))
-    let branchLines = branchesOutput.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-    
-    var branches: [BranchInfo] = []
-
-    for branchLine in branchLines {
-        let isCurrentBranch = branchLine.hasPrefix("* ")
-        let branchName = branchLine.replacingOccurrences(of: "* ", with: "")
-        
-        // Check each branch's status individually
-        let branchStatus: BranchStatus
-        
-        do {
-            // Check for upstream without checking out - use branch-specific revision syntax
-            let unpushedCommitsOutput = try await git.run(.revList(count: true, revisions: "\(branchName)@{u}..\(branchName)"))
-            let unpushedCommits = Int(unpushedCommitsOutput.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-            
-            if unpushedCommits > 0 {
-                branchStatus = .unpushedCommits(count: unpushedCommits)
-            } else {
-                branchStatus = .upToDate
-            }
-        } catch {
-            // If there's no upstream configured, this is a local-only branch
-            logger.debug("No upstream configured for branch '\(branchName)': \(error)")
-            branchStatus = .localOnly
-        }
-        
-        branches.append(BranchInfo(name: branchName, status: branchStatus, isCurrentBranch: isCurrentBranch))
-    }
-
-    return RepositoryBranchInfo(branches: branches)
+/// Wraps a string so `/bin/sh` passes it to git unchanged.
+func shellQuoted(_ string: String) -> String {
+    "'" + string.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }

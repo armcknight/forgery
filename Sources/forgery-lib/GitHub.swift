@@ -169,14 +169,12 @@ public extension GitHub {
     
     func cloneNonForkedRepo(repo: Repository, cloneRoot: String, noWikis: Bool) async throws {
         guard let name = repo.name else {
-            logger.error("No name provided for the repo (id \(repo.id)).")
-            return
+            throw ForgeryError.Clone.Repo.noName
         }
         guard let sshURL = repo.sshURL else {
-            logger.error("No SSH URL provided for \(name).");
-            return
+            throw ForgeryError.Clone.Repo.noSSHURL
         }
-        
+
         try await cloneRepo(repoName: name, sshURL: sshURL, cloneRoot: cloneRoot)
         try await tagRepo(repo: repo, clonePath: "\(cloneRoot)/\(name)")
         
@@ -212,7 +210,7 @@ public extension GitHub {
             throw ForgeryError.Clone.Repo.noForkParentSSHURL
         }
         guard await remoteRepoExists(repoSSHURL: parentURL) else {
-            throw ForgeryError.Clone.Repo.couldNotFetchRepo
+            throw ForgeryError.Clone.Repo.couldNotFetchForkParentRepo
         }
         logger.info("Adding upstream remote.")
         try await git.run(.addRemote(name: "upstream", url: parentURL))

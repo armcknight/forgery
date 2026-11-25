@@ -1,6 +1,30 @@
 import Foundation
 
 /**
+ * A directory to scan, and what the repos inside it are.
+ *
+ * The category travels with the root so that a repo can be classified while it is found, instead
+ * of by matching substrings of its path afterwards. Path matching is what made forked repos and
+ * gists disappear from the report: they are cloned under `forked`, but the report grouped on
+ * `forks`.
+ */
+public struct RepoRoot: Sendable, Equatable {
+    /// Absolute path of the directory holding the clones.
+    public let path: String
+
+    /// What kind of repos this directory holds.
+    public let category: RepoCategory
+
+    public init(path: String, category: RepoCategory) {
+        self.path = path
+        self.category = category
+    }
+
+    /// Whether the clones sit one level deeper, under the login of each repo's owner.
+    public var isOwnerNested: Bool { category.isOwnerNested }
+}
+
+/**
  * Paths for different repository types that could exist for either users or orgs. Orgs cannot have starred repositories, so there is no property for that in this struct. See the sibling property for it in `UserPaths`.`
  */
 public struct RepoPaths {
@@ -83,29 +107,30 @@ public struct CommonPaths {
         }
     }
 
-    public var validPaths: [String] {
-        var pathsToCheck: [String] = []
+    /// The directories to scan, each tagged with the kind of repos it holds.
+    public var validRoots: [RepoRoot] {
+        var roots = [RepoRoot]()
 
         // Add repo paths
         if !repoTypes.noPublicRepos {
-            pathsToCheck.append(repoPaths.publicPath)
+            roots.append(RepoRoot(path: repoPaths.publicPath, category: .publicRepo))
         }
         if !repoTypes.noPrivateRepos {
-            pathsToCheck.append(repoPaths.privatePath)
+            roots.append(RepoRoot(path: repoPaths.privatePath, category: .privateRepo))
         }
         if !repoTypes.noForkedRepos {
-            pathsToCheck.append(repoPaths.forkPath)
+            roots.append(RepoRoot(path: repoPaths.forkPath, category: .forkedRepo))
         }
 
         // Add gist paths
         if !repoTypes.noPublicGists {
-            pathsToCheck.append(gistPaths.publicPath)
+            roots.append(RepoRoot(path: gistPaths.publicPath, category: .publicGist))
         }
         if !repoTypes.noPrivateGists {
-            pathsToCheck.append(gistPaths.privatePath)
+            roots.append(RepoRoot(path: gistPaths.privatePath, category: .privateGist))
         }
 
-        return pathsToCheck
+        return roots
     }
 }
 
@@ -154,20 +179,21 @@ public struct UserPaths {
         }
     }
 
-    public var validPaths: [String] {
-        var pathsToCheck = commonPaths.validPaths
+    /// The directories to scan, each tagged with the kind of repos it holds.
+    public var validRoots: [RepoRoot] {
+        var roots = commonPaths.validRoots
 
         if !commonPaths.repoTypes.noStarredRepos {
-            pathsToCheck.append(starredRepoPath)
+            roots.append(RepoRoot(path: starredRepoPath, category: .starredRepo))
         }
 
         if !commonPaths.repoTypes.noForkedGists {
-            pathsToCheck.append(forkedGistPath)
+            roots.append(RepoRoot(path: forkedGistPath, category: .forkedGist))
         }
         if !commonPaths.repoTypes.noStarredGists {
-            pathsToCheck.append(starredGistPath)
+            roots.append(RepoRoot(path: starredGistPath, category: .starredGist))
         }
 
-        return pathsToCheck
+        return roots
     }
 }

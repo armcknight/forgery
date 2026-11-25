@@ -78,6 +78,71 @@ It builds a directory structure like so:
 
 Go through cloned repos and update them by doing things like fetching/fast-forwarding commits (and optionally for forks, pushing commits from `upstream` to `fork`), updating topic/language tags, and pruning local repos that no longer apply from remote, like unstarred repos.
 
+### `status`
+
+Report which cloned repos have uncommitted work, how each local branch compares to its upstream, and which branches have no upstream at all.
+
+```sh
+forgery status ~/Code --user your-login
+```
+
+Each repo is tagged with the conditions that apply to it. A repo can carry several at once:
+
+| | |
+|---|---|
+| `M` | modified working tree (staged, unstaged, or untracked) |
+| `S` | stashed changes |
+| `A` | a branch is ahead of its upstream |
+| `B` | a branch is behind its upstream |
+| `D` | a branch is diverged (both ahead of and behind its upstream) |
+| `L` | a branch has no upstream |
+| `G` | an upstream is gone from the remote |
+| `H` | detached HEAD |
+| `!` | a requested fetch failed, so the remote data shown is old |
+| `W` | uncommitted work was pushed to a WIP branch (`sync --push-wip` only) |
+
+`A`, `B`, `D` and `L` are not exclusive of one another, because one repo can hold both a tracked branch that is ahead and a branch with no upstream at all.
+
+#### Options
+
+| | |
+|---|---|
+| `--fetch` | Fetch from every remote, with `--prune`, before reading each repo. Without it, everything compared against a remote is only as fresh as your last fetch, so a repo that is behind looks clean. |
+| `--all-branches` | List every local branch of the reported repos, not just the ones needing attention. |
+| `--all-repos` | Also list repos with nothing to report, for a full inventory. |
+| `--html <path>` | Write a self-contained HTML report. It has no external references, so it opens with no network. |
+| `--open` | Open that report in the default browser. Needs `--html`. |
+| `--jobs <n>` | How many repos to inspect at once. Defaults to 8. |
+| `--top <n>` | How many repos to rank in each of the summary's top lists. Defaults to 5. |
+| `--quiet` | Do not print the terminal report. Use with `--html`. |
+
+#### Example
+
+```
+Summary  (26 repos scanned, 15 need attention)
+  modified     10  ██████████████████████
+  ahead         1  ██
+  behind        1  ██
+  local-only    6  █████████████
+  clean        11
+
+Needing attention by type:
+  public   15  ████████████████████████
+
+Most unpushed commits:
+  ↑12  forgery
+
+Repositories needing attention:
+
+  Public Repositories:
+    [MD] /Users/you/Code/user/you/repos/public/forgery
+      * main       ↑3 ↓2
+        feature-x  ↑1
+        scratch    (no upstream)
+         M Package.swift
+        ?? notes.txt
+```
+
 ## TODO
 
 ### Features & Enhancements
@@ -122,6 +187,11 @@ Go through cloned repos and update them by doing things like fetching/fast-forwa
         - [x] `--wip` option: commit all dirty index changes to a new branch called e.g. `forgery-wip` and have a way to check any locals/remotes for existence of such branches 
             - [x] this should actually go under the `sync` command
             - [ ] make branch name customizable
+        - [x] `--fetch` option: fetch from every remote, with `--prune`, before reading each repo's state
+        - [x] report ahead and behind counts per branch, so diverged branches and deleted upstreams are visible
+        - [x] `--all-branches` and `--all-repos` options to list every branch, and every repo
+        - [x] `--html` and `--open` options to write a self-contained HTML report
+        - [x] rollups: counts by state, counts by repo type, and top offenders, in both outputs
         - [ ] handle submodules
         - [ ] options to fast-forward or pull-rebase new upstream commits
         - [ ] `--fork-dirty-starred` option: for a starred repo with a dirtied index or unpushed commits, create a fork if one doesn't already exist under the user, push it to that instead, move the local modified clone from star to fork path, and then reclone fresh starred version

@@ -1,205 +1,138 @@
 import XCTest
 import Foundation
+import ForgeryTestSupport
 @testable import forgery_lib
-import GitKit
 
+/**
+ * Covers how repos are found on disk and what category they are filed under.
+ */
 class StatusTests: XCTestCase {
-    
-    private var tempDirectory: String!
-    private var fileManager: FileManager!
-    
+
+    private var temporaryDirectory: TemporaryDirectory!
+    private var basePath: String { temporaryDirectory.path }
+
     override func setUp() {
         super.setUp()
-        fileManager = FileManager.default
-        
-        // Create a unique temporary directory for each test
-        let tempDir = NSTemporaryDirectory()
-        tempDirectory = "\(tempDir)forgery-test-\(UUID().uuidString)"
-        
-        try! fileManager.createDirectory(atPath: tempDirectory, withIntermediateDirectories: true, attributes: nil)
+        temporaryDirectory = TemporaryDirectory()
     }
-    
+
     override func tearDown() {
-        // Clean up temporary directory
-        if let tempDir = tempDirectory {
-            try? fileManager.removeItem(atPath: tempDir)
-        }
+        temporaryDirectory = nil
         super.tearDown()
     }
 
-    func testStarredRepositoryStructure() async throws {
-        // Setup: Create starred repository structure
-        try await createStarredRepoStructure()
-        
-        // Test: Get paths for a user and check starred repos are included
-        let allReposOptions = allReposOptions()
-        
-        let userPaths = try UserPaths(
-            basePath: tempDirectory,
-            username: "testuser", 
-            repoTypes: allReposOptions,
-            createOnDisk: false
-        )
-        
-        let expectedStarredPath = "\(tempDirectory!)/user/testuser/repos/starred"
-        XCTAssertTrue(userPaths.validPaths.contains(expectedStarredPath), "Starred repo path should be included in valid paths")
-        XCTAssertEqual(userPaths.starredRepoPath, expectedStarredPath, "Starred repo path should match expected path")
+    // MARK: - Roots
+
+    func testUserRootsCoverEveryRepoType() throws {
+        let paths = try UserPaths(basePath: basePath, username: "testuser", repoTypes: allRepoTypes(), createOnDisk: false)
+        let categories = Set(paths.validRoots.map { $0.category })
+
+        XCTAssertEqual(categories, Set(RepoCategory.allCases), "Every repo type should have a root to scan")
     }
-    
-    func testForkedRepositoryStructure() async throws {
-        // Setup: Create forked repository structure
-        try await createForkedRepoStructure()
-        
-        // Test: Get paths and verify forked repos are included via CommonPaths
-        let allReposOptions = allReposOptions()
-        
-        let userPaths = try UserPaths(
-            basePath: tempDirectory,
-            username: "testuser",
-            repoTypes: allReposOptions,
-            createOnDisk: false
-        )
-        
-        let expectedForkedPath = "\(tempDirectory!)/user/testuser/repos/forked"
-        XCTAssertTrue(userPaths.validPaths.contains(expectedForkedPath), "Forked repo path should be included in valid paths")
-        XCTAssertEqual(userPaths.commonPaths.repoPaths.forkPath, expectedForkedPath, "Forked repo path should match expected path")
+
+    func testStarredRootIsIncluded() throws {
+        let paths = try UserPaths(basePath: basePath, username: "testuser", repoTypes: allRepoTypes(), createOnDisk: false)
+        let starred = paths.validRoots.first { $0.category == .starredRepo }
+
+        XCTAssertEqual(starred?.path, "\(basePath)/user/testuser/repos/starred")
+        XCTAssertEqual(starred?.path, paths.starredRepoPath)
     }
-    
-    func testDirectoryStructureDetection() async throws {
-        // Setup: Create mixed repository structure
-        try await createStarredRepoStructure()
-        try await createForkedRepoStructure()
-        try await createRegularRepoStructure()
-        
-        // Test: Verify that starred and forked paths are detected correctly
-        let starredPath = "\(tempDirectory!)/user/testuser/repos/starred"
-        let forkedPath = "\(tempDirectory!)/user/testuser/repos/forked" 
-        let publicPath = "\(tempDirectory!)/user/testuser/repos/public"
-        
-        // Verify starred repos exist with owner/repo structure
-        let starredContents = try fileManager.contentsOfDirectory(atPath: starredPath)
-        XCTAssertTrue(starredContents.contains("owner1"), "Starred path should contain owner1 directory")
-        XCTAssertTrue(starredContents.contains("owner2"), "Starred path should contain owner2 directory")
-        XCTAssertTrue(starredContents.contains("github"), "Starred path should contain github directory")
-        
-        // Verify owner directories contain actual repos
-        let owner1Contents = try fileManager.contentsOfDirectory(atPath: "\(starredPath)/owner1")
-        XCTAssertTrue(owner1Contents.contains("awesome-repo"), "Owner1 should contain awesome-repo")
-        XCTAssertTrue(owner1Contents.contains("another-repo"), "Owner1 should contain another-repo")
-        
-        // Verify forked repos exist with owner/repo structure
-        let forkedContents = try fileManager.contentsOfDirectory(atPath: forkedPath)
-        XCTAssertTrue(forkedContents.contains("apache"), "Forked path should contain apache directory")
-        XCTAssertTrue(forkedContents.contains("facebook"), "Forked path should contain facebook directory")
-        XCTAssertTrue(forkedContents.contains("microsoft"), "Forked path should contain microsoft directory")
-        
-        // Verify public repos have direct structure (no owner level)
-        let publicContents = try fileManager.contentsOfDirectory(atPath: publicPath)
-        XCTAssertTrue(publicContents.contains("my-public-repo"), "Public path should contain my-public-repo directly")
-        XCTAssertTrue(publicContents.contains("my-blog"), "Public path should contain my-blog directly")
+
+    func testOwnerNestedRootsAreTheStarredAndForkedTrees() throws {
+        let paths = try UserPaths(basePath: basePath, username: "testuser", repoTypes: allRepoTypes(), createOnDisk: false)
+        let nested = Set(paths.validRoots.filter { $0.isOwnerNested }.map { $0.category })
+
+        // Starred and forked trees hold other people's repos, so they are cloned one level deeper
+        // under the owner's login. See `GitHub.cloneForkedRepo`.
+        XCTAssertEqual(nested, [.starredRepo, .forkedRepo, .starredGist, .forkedGist])
     }
-    
-    func testGitRepositoriesExist() async throws {
-        // Setup: Create test repositories
-        try await createStarredRepoStructure()
-        try await createForkedRepoStructure()
-        try await createRegularRepoStructure()
-        
-        // Test: Verify .git directories exist in the correct locations
-        let testPaths = [
-            "\(tempDirectory!)/user/testuser/repos/starred/owner1/awesome-repo/.git",
-            "\(tempDirectory!)/user/testuser/repos/starred/github/swift/.git",
-            "\(tempDirectory!)/user/testuser/repos/forked/apache/kafka/.git",
-            "\(tempDirectory!)/user/testuser/repos/forked/facebook/react/.git",
-            "\(tempDirectory!)/user/testuser/repos/public/my-public-repo/.git",
-            "\(tempDirectory!)/user/testuser/repos/private/my-private-repo/.git"
-        ]
-        
-        for gitPath in testPaths {
-            XCTAssertTrue(fileManager.fileExists(atPath: gitPath), "Git directory should exist at \(gitPath)")
-        }
-    }
-    
-    func testRepoTypeFiltering() async throws {
-        // Test: Verify that repo type filtering works correctly
-        let repoTypesNoStarred = RepoTypeOptions.Resolved(
+
+    func testExcludedRepoTypesProduceNoRoot() throws {
+        let noStarred = RepoTypeOptions.Resolved(
             noRepos: false, noForkedRepos: false, noStarredRepos: true, noPublicRepos: false, noPrivateRepos: false,
             onlyStarredRepos: false, onlyForkedRepos: false, onlyPublicRepos: false, onlyPrivateRepos: false,
             noWikis: false, noGists: false, noForkedGists: false, noStarredGists: false, noPublicGists: false, noPrivateGists: false,
             onlyStarredGists: false, onlyForkedGists: false, onlyPublicGists: false, onlyPrivateGists: false
         )
-        
-        let userPaths = try UserPaths(
-            basePath: tempDirectory,
-            username: "testuser",
-            repoTypes: repoTypesNoStarred,
-            createOnDisk: false
-        )
-        
-        let starredPath = "\(tempDirectory!)/user/testuser/repos/starred"
-        XCTAssertFalse(userPaths.validPaths.contains(starredPath), "Starred repo path should be excluded when noStarredRepos is true")
-    }
-}
+        let paths = try UserPaths(basePath: basePath, username: "testuser", repoTypes: noStarred, createOnDisk: false)
 
-private extension StatusTests {
-    /// Creates a RepoTypeOptions.Resolved with all repos enabled
-    func allReposOptions() -> RepoTypeOptions.Resolved {
-        return RepoTypeOptions.Resolved(
-            noRepos: false, noForkedRepos: false, noStarredRepos: false, noPublicRepos: false, noPrivateRepos: false,
-            onlyStarredRepos: false, onlyForkedRepos: false, onlyPublicRepos: false, onlyPrivateRepos: false,
-            noWikis: false, noGists: false, noForkedGists: false, noStarredGists: false, noPublicGists: false, noPrivateGists: false,
-            onlyStarredGists: false, onlyForkedGists: false, onlyPublicGists: false, onlyPrivateGists: false
-        )
+        XCTAssertFalse(paths.validRoots.contains { $0.category == .starredRepo })
     }
 
-    /// Creates a git repository at the specified path
-    func createGitRepo(at path: String, withFile fileName: String = "test.txt", content: String = "test") async throws {
-        try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+    func testOrganizationsHaveNoStarredOrForkedGistRoots() throws {
+        let paths = try CommonPaths(basePath: basePath, orgName: "testorg", repoTypes: allRepoTypes(), createOnDisk: false)
+        let categories = Set(paths.validRoots.map { $0.category })
 
-        let git = Git(path: path)
-        try await git.run(.raw("init"))
-        try await git.run(.raw("config user.name 'Test User'"))
-        try await git.run(.raw("config user.email 'test@example.com'"))
-
-        // Create a test file
-        let filePath = "\(path)/\(fileName)"
-        try content.write(toFile: filePath, atomically: true, encoding: .utf8)
-
-        try await git.run(.addAll)
-        try await git.run(.commit(message: "Initial commit", allowEmpty: false))
+        // Orgs cannot star repos or fork gists, so those roots do not exist for them.
+        XCTAssertEqual(categories, [.publicRepo, .privateRepo, .forkedRepo, .publicGist, .privateGist])
     }
 
-    /// Creates a directory structure for starred repositories
-    func createStarredRepoStructure() async throws {
-        // Create starred repos: basePath/user/username/repos/starred/owner/repo
-        let starredPath = "\(tempDirectory!)/user/testuser/repos/starred"
+    // MARK: - Discovery
 
-        // Create multiple owners with repos
-        try await createGitRepo(at: "\(starredPath)/owner1/awesome-repo")
-        try await createGitRepo(at: "\(starredPath)/owner1/another-repo", withFile: "README.md", content: "# Another Repo")
-        try await createGitRepo(at: "\(starredPath)/owner2/cool-project")
-        try await createGitRepo(at: "\(starredPath)/github/swift", withFile: "Package.swift", content: "// Swift package")
+    func testDiscoversReposDirectlyUnderFlatRoots() async throws {
+        let root = "\(basePath)/user/testuser/repos/public"
+        try await GitFixture.makeRepo(at: "\(root)/my-blog")
+        try await GitFixture.makeRepo(at: "\(root)/my-notes")
+
+        let discovered = discoverRepositories(roots: [RepoRoot(path: root, category: .publicRepo)])
+
+        XCTAssertEqual(discovered.map { ($0.path as NSString).lastPathComponent }, ["my-blog", "my-notes"])
+        XCTAssertTrue(discovered.allSatisfy { $0.owner == nil }, "A flat root has no owner level")
+        XCTAssertTrue(discovered.allSatisfy { $0.category == .publicRepo })
     }
 
-    /// Creates a directory structure for forked repositories
-    func createForkedRepoStructure() async throws {
-        // Create forked repos: basePath/user/username/repos/forked/owner/repo
-        let forkedPath = "\(tempDirectory!)/user/testuser/repos/forked"
+    func testDiscoversReposUnderAnOwnerLevel() async throws {
+        let root = "\(basePath)/user/testuser/repos/starred"
+        try await GitFixture.makeRepo(at: "\(root)/owner1/awesome-repo")
+        try await GitFixture.makeRepo(at: "\(root)/owner2/cool-project")
 
-        // Create multiple owners with repos
-        try await createGitRepo(at: "\(forkedPath)/apache/kafka")
-        try await createGitRepo(at: "\(forkedPath)/facebook/react", withFile: "index.js", content: "console.log('Hello React');")
-        try await createGitRepo(at: "\(forkedPath)/microsoft/vscode")
+        let discovered = discoverRepositories(roots: [RepoRoot(path: root, category: .starredRepo)])
+
+        XCTAssertEqual(discovered.count, 2)
+        XCTAssertEqual(Set(discovered.compactMap { $0.owner }), ["owner1", "owner2"])
+        XCTAssertTrue(discovered.allSatisfy { $0.category == .starredRepo })
     }
 
-    /// Creates a directory structure for regular (public/private) repositories
-    func createRegularRepoStructure() async throws {
-        // Create regular repos: basePath/user/username/repos/public/repo (no owner level)
-        let publicPath = "\(tempDirectory!)/user/testuser/repos/public"
-        let privatePath = "\(tempDirectory!)/user/testuser/repos/private"
+    /// Forked repos are cloned under `forked`, but the report grouped on `forks`, so they were
+    /// scanned and then dropped before anything was printed.
+    func testForkedReposAreDiscoveredAndCategorised() async throws {
+        let root = "\(basePath)/user/testuser/repos/forked"
+        try await GitFixture.makeRepo(at: "\(root)/apache/kafka")
 
-        try await createGitRepo(at: "\(publicPath)/my-public-repo")
-        try await createGitRepo(at: "\(publicPath)/my-blog", withFile: "index.html", content: "<h1>My Blog</h1>")
-        try await createGitRepo(at: "\(privatePath)/my-private-repo")
+        let discovered = discoverRepositories(roots: [RepoRoot(path: root, category: .forkedRepo)])
+
+        XCTAssertEqual(discovered.count, 1)
+        XCTAssertEqual(discovered.first?.owner, "apache")
+        XCTAssertEqual(discovered.first?.category, .forkedRepo)
+    }
+
+    /// The old check tested whether the whole path contained `/forked` or `/starred`, so a base
+    /// path with either word in it made every root look owner-nested.
+    func testBasePathContainingForkedDoesNotAddAnOwnerLevel() async throws {
+        let root = "\(basePath)/forked-stuff/user/testuser/repos/public"
+        try await GitFixture.makeRepo(at: "\(root)/my-blog")
+
+        let discovered = discoverRepositories(roots: [RepoRoot(path: root, category: .publicRepo)])
+
+        XCTAssertEqual(discovered.count, 1, "A public root is flat no matter what the base path is called")
+        XCTAssertNil(discovered.first?.owner)
+    }
+
+    func testNonRepositoryDirectoriesAreSkipped() async throws {
+        let root = "\(basePath)/user/testuser/repos/public"
+        try await GitFixture.makeRepo(at: "\(root)/real-repo")
+        try FileManager.default.createDirectory(atPath: "\(root)/not-a-repo", withIntermediateDirectories: true)
+
+        let discovered = discoverRepositories(roots: [RepoRoot(path: root, category: .publicRepo)])
+
+        XCTAssertEqual(discovered.map { ($0.path as NSString).lastPathComponent }, ["real-repo"])
+    }
+
+    func testMissingRootIsSkippedRatherThanFailing() {
+        let discovered = discoverRepositories(roots: [
+            RepoRoot(path: "\(basePath)/does/not/exist", category: .publicRepo)
+        ])
+
+        XCTAssertTrue(discovered.isEmpty)
     }
 }

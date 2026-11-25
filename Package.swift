@@ -35,10 +35,22 @@ let package = Package(
             .product(name: "Subprocess", package: "swift-subprocess"),
         ]
         ),
+        // Fixture builders shared by both test targets. Not listed in `products`, so it is never
+        // shipped; it exists so the two test targets stop keeping their own copies of the same
+        // git repo builders.
+        .target(
+            name: "ForgeryTestSupport",
+            dependencies: [
+                "forgery-lib",
+                .product(name: "GitKit", package: "git-kit"),
+            ],
+            path: "Tests/ForgeryTestSupport"
+        ),
         .testTarget(
             name: "forgery-libTests",
             dependencies: [
                 "forgery-lib",
+                "ForgeryTestSupport",
                 .product(name: "GitKit", package: "git-kit"),
             ]
         ),
@@ -46,6 +58,8 @@ let package = Package(
             name: "forgeryTests",
             dependencies: [
                 "forgery-lib",
+                "ForgeryTestSupport",
+                .product(name: "GitKit", package: "git-kit"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         )
